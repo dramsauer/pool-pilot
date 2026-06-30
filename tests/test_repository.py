@@ -59,3 +59,66 @@ def test_photo_crud():
     delete_photo(session, photo.id)
     photos = get_photos(session)
     assert len(photos) == 0
+
+
+from database.repository import (
+    save_pool, get_pools, update_pool, delete_pool,
+    save_trinkwasser, get_trinkwasser_quellen, delete_trinkwasser,
+    save_product, get_products, update_product, delete_product,
+    get_readings_for_pool,
+)
+from database.models import Pool, Trinkwasser, Product
+
+
+def test_pool_crud():
+    session = setup()
+    pool = save_pool(session, name="Test Pool", volume_liter=500)
+    assert pool.id is not None
+    assert pool.name == "Test Pool"
+
+    pools = get_pools(session)
+    assert len(pools) == 1
+
+    pool2 = update_pool(session, pool.id, name="Updated Pool")
+    assert pool2.name == "Updated Pool"
+
+    delete_pool(session, pool.id)
+    assert len(get_pools(session)) == 0
+    session.close()
+
+
+def test_trinkwasser_crud():
+    session = setup()
+    tw = save_trinkwasser(session, name="Stamsried", ph_default=7.5, alkalinity_default=145.0)
+    assert tw.id is not None
+
+    quellen = get_trinkwasser_quellen(session)
+    assert len(quellen) == 1
+
+    delete_trinkwasser(session, tw.id)
+    assert len(get_trinkwasser_quellen(session)) == 0
+    session.close()
+
+
+def test_product_crud():
+    session = setup()
+    prod = save_product(session, name="pH-Minus", typ="ph_minus", dosage_factor=1.4, unit="g")
+    assert prod.id is not None
+
+    products = get_products(session)
+    assert len(products) == 1
+
+    prod2 = update_product(session, prod.id, name="New pH-Minus")
+    assert prod2.name == "New pH-Minus"
+
+    delete_product(session, prod.id)
+    assert len(get_products(session)) == 0
+    session.close()
+
+
+def test_readings_for_pool():
+    session = setup()
+    pool = save_pool(session, name="Pool A", volume_liter=1000)
+    readings = get_readings_for_pool(session, pool.id)
+    assert len(readings) == 0
+    session.close()
