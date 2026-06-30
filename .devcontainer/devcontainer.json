@@ -10,7 +10,7 @@
         "ms-python.pylance",
         "ms-toolsai.jupyter",
         "charliermarsh.ruff",
-        "mjethwa-streamlit.streamlit-preview"
+        "auchenberg.vscode-browser-preview"
       ],
       "settings": {
         "streamlitPreview.autoStart": true,
