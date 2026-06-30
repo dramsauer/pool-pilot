@@ -31,7 +31,14 @@ help:
 	@echo ""
 
 install:
-	pip install --no-cache-dir -r requirements.txt
+	pip install --no-cache-dir \
+	streamlit>=1.35 \
+	sqlalchemy>=2.0 \
+	plotly>=5.20 \
+	pillow>=10.0 \
+	pandas>=2.1 \
+	pytest>=7.4 \
+	tomli>=2.0
 
 dev:
 	$(PYTHON) -m streamlit run app.py --server.address=0.0.0.0 --server.port=8501
