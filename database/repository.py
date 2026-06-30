@@ -373,3 +373,15 @@ def complete_task_with_notes(
             session.commit()
 
     return task
+
+
+def get_tasks_by_date_range(
+    session: Session, start_date: datetime.date, end_date: datetime.date, pool_id: int | None = None
+) -> list[MaintenanceTask]:
+    q = session.query(MaintenanceTask).filter(
+        MaintenanceTask.due_date >= start_date,
+        MaintenanceTask.due_date <= end_date,
+    )
+    if pool_id is not None:
+        q = q.filter(MaintenanceTask.pool_id == pool_id)
+    return q.order_by(MaintenanceTask.due_date, MaintenanceTask.completed).all()
