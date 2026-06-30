@@ -1,11 +1,11 @@
 import datetime
-from database.db import get_engine, init_db, get_session
+from database.db import get_engine, init_db, get_session, migrate_from_config
 from database.models import Base, Pool, Trinkwasser, Product, Reading, MaintenanceTask, Photo
 
 
 def create_memory_session():
     engine = get_engine(":memory:")
-    init_db(engine)
+    Base.metadata.create_all(engine)
     return get_session(engine)
 
 
@@ -93,4 +93,30 @@ def test_create_photo():
     session.commit()
     saved = session.query(Photo).first()
     assert saved.image_path == "photos/test.jpg"
+    session.close()
+
+
+def test_migration_creates_default_pool():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    pool_count_before = session.query(Pool).count()
+    assert pool_count_before == 0
+
+    migrate_from_config(session)
+
+    pool_count_after = session.query(Pool).count()
+    assert pool_count_after == 1
+    pool = session.query(Pool).first()
+    assert pool.name == "Lay-Z-Spa Ibiza"
+    assert pool.volume_liter == 1000
+
+    product_count = session.query(Product).count()
+    assert product_count == 3
+
+    tw_count = session.query(Trinkwasser).count()
+    assert tw_count == 1
     session.close()

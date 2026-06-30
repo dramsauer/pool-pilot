@@ -1,5 +1,6 @@
 import datetime
-from database.db import get_engine, init_db, get_session
+from database.db import get_engine, get_session
+from database.models import Base
 from database.repository import (
     save_reading, get_readings, get_latest_reading, get_readings_since,
     save_task, get_pending_tasks, complete_task,
@@ -9,7 +10,7 @@ from database.repository import (
 
 def setup():
     engine = get_engine(":memory:")
-    init_db(engine)
+    Base.metadata.create_all(engine)
     session = get_session(engine)
     return session
 
