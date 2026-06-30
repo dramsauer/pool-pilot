@@ -9,7 +9,8 @@
         "ms-python.python",
         "ms-python.pylance",
         "ms-toolsai.jupyter",
-        "charliermarsh.ruff"
+        "charliermarsh.ruff",
+        "mjethwa-streamlit.streamlit-preview"
       ]
     }
   },
