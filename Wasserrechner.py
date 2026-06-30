@@ -190,6 +190,23 @@ gauge_fig.add_trace(
 )
 st.plotly_chart(gauge_fig, use_container_width=True)
 
+with st.expander("ℹ️ Was bedeuten LSI und RSI?"):
+    st.markdown("""
+**LSI (Langelier Sättigungs-Index)** – sagt voraus, ob das Wasser Kalk ablagert oder löst.
+- **< -0,5 (korrosiv)**: Wasser löst Kalk — greift Beckenoberflächen und Rohre an.
+- **-0,5 bis +0,5 (ausgeglichen)**: Idealer Bereich — Wasser ist im Gleichgewicht.
+- **> +0,5 (kalkend)**: Wasser neigt zu Kalkablagerungen — trübes Wasser, Beläge.
+
+**RSI (Ryznar Stabilitäts-Index)** – praktischere Ergänzung zum LSI.
+- **< 6,0 (stark kalkend)**: Hohe Kalkabscheidung.
+- **6,0 – 7,0 (neutral)**: Ausgeglichen.
+- **> 7,0 (korrosiv)**: Wasser greift Oberflächen an.
+
+👉 [LSI Rechner & Erklärung (poolplanet.de)](https://www.poolplanet.de/ratgeber/lsi-rechner/)
+👉 [Wasserbalance im Pool (wasserfachmann.de)](https://www.wasserfachmann.de/wasserbalance/)
+👉 [Langelier Sättigungs-Index (Wikipedia)](https://de.wikipedia.org/wiki/Langelier-Index)
+    """)
+
 # pH / Chlor leiste
 ph_ok = pool.ph_min <= ph <= pool.ph_max
 chl_ok = pool.chlorine_min <= chlorine <= pool.chlorine_max
