@@ -1,0 +1,16 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Open Streamlit",
+            "type": "shell",
+            "command": "echo '🌐 PoolPilot: http://localhost:8501  →  Cmd+Shift+P → Simple Browser: Show'",
+            "runOn": "folderOpen",
+            "presentation": {
+                "close": true,
+                "reveal": "never"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

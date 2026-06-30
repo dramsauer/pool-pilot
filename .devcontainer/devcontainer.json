@@ -9,21 +9,16 @@
         "ms-python.python",
         "ms-python.pylance",
         "ms-toolsai.jupyter",
-        "charliermarsh.ruff",
-        "auchenberg.vscode-browser-preview"
+        "charliermarsh.ruff"
       ],
-      "settings": {
-        "streamlitPreview.autoStart": true,
-        "streamlitPreview.port": 8501,
-        "streamlitPreview.openInSidePanel": true
-      }
+      "settings": {}
     }
   },
   "forwardPorts": [8501],
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
   "postCreateCommand": "sudo chown -R vscode:vscode /app",
-  "postStartCommand": "nohup streamlit run Wasserrechner.py --server.headless=true --server.port=8501 > /tmp/streamlit.log 2>&1 &",
+  "postStartCommand": "nohup streamlit run Wasserrechner.py --server.headless=true --server.port=8501 > /tmp/streamlit.log 2>&1 & sleep 2 && echo '🌐 PoolPilot: http://localhost:8501 → Im VS Code: Cmd+Shift+P → Simple Browser: Show'",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/common-utils:2": {
