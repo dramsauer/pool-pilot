@@ -8,7 +8,26 @@
 
 ## 1. Projektübersicht
 
-Interaktive Web-Anwendung zur Berechnung und Überwachung des Wasserhaushalts von Schwimmbädern. Unterstützt Chlor-, Salzwasser- und alternative Desinfektionssysteme. Berechnungen basieren auf LSI (Langelier Saturation Index) und RSI (Ryznar Stability Index).
+Interaktive Web-Anwendung zur Berechnung und Überwachung des Wasserhaushalts für den eigenen Pool.
+
+### 1.1 Pool-Konfiguration (Single-User, voreingestellt)
+| Eigenschaft | Wert |
+|-------------|------|
+| **Pool** | Lay-Z-Spa Ibiza (Bestway) |
+| **Maße** | 180 × 180 × 66 cm |
+| **Wasservolumen** | ~1000 Liter (Standard-Einstellung, anpassbar) |
+| **Pool-Typ** | Chlor (Trichlor-Tabletten) |
+
+### 1.2 Eingesetzte Mittel
+| Mittel | Produkt | Wirkstoff | Faktor |
+|--------|---------|-----------|--------|
+| **Chlor** | Summer Fun Perfect Care Tabs 20g | Trichlor (stabilisiert, ~90% av. Cl) | 1 Tablette = 18 g freies Chlor / 1000 L |
+| **pH-Senker** | Summer Fun pH-Minus Granulat | NaHSO₄ (Natriumhydrogensulfat) | 1.4 g pro m³ pro 0.1 pH ↓ |
+| **pH-Heber** | Summer Fun pH-Plus Granulat | Na₂CO₃ (Natriumcarbonat) | 0.74 g pro m³ pro 0.1 pH ↑ |
+
+### 1.3 Teststreifen
+- **Marke:** Summer Fun Wasserteststreifen (pH, Chlor, Brom)
+- **Messbereiche:** pH (6.2–8.4), Chlor (0–10 mg/L), Brom (0–20 mg/L)
 
 ---
 
@@ -22,19 +41,24 @@ Interaktive Web-Anwendung zur Berechnung und Überwachung des Wasserhaushalts vo
 - **Bildverarbeitung:** Pillow
 - **Entwicklung:** VS Code DevContainer (Python 3.11+)
 
-### 2.2 Verzeichnisstruktur
+### 2.2 Single-User Ansatz
+- Keine Multi-Pool-Verwaltung (fester Pool "Lay-Z-Spa Ibiza" voreingestellt)
+- Pool-Daten in `config.toml` statt in DB-Tabelle
+- Messwerte & Historie in SQLite
+- Vereinfachtes Datenmodell (keine Pool-Konfig-Tabelle nötig)
+
+### 2.3 Verzeichnisstruktur
 ```
 pool-water-balance/
 ├── .devcontainer/
 │   ├── devcontainer.json
 │   └── Dockerfile
-├── app.py                      # Entry Point (Dashboard)
+├── app.py                      # Streamlit Start (Dashboard)
 ├── pages/
-│   ├── 1_Wasserrechner.py      # LSI/RSI Berechnung
-│   ├── 2_Dosierung.py          # Chemikalien-Dosierung
-│   ├── 3_Verlauf.py            # Historie & Trends
-│   ├── 4_Wartung.py            # Wartungsplan
-│   └── 5_Fotos.py              # Foto-Dokumentation
+│   ├── 1_Wasserrechner.py      # LSI/RSI + Dosierung in einer Seite
+│   ├── 2_Verlauf.py            # Historie & Trends
+│   ├── 3_Wartung.py            # Wartungsplan
+│   └── 4_Fotos.py              # Foto-Dokumentation
 ├── pool_calculations/
 │   ├── __init__.py
 │   ├── lsi.py                  # LSI Berechnung
@@ -43,6 +67,7 @@ pool-water-balance/
 │   └── models.py               # Dataclasses/Enums
 ├── database/
 │   ├── __init__.py
+│   ├── db.py                   # SQLite Setup + SQLAlchemy Engine
 │   ├── models.py               # SQLAlchemy Models
 │   └── repository.py           # Data Access Layer
 ├── utils/
@@ -53,6 +78,7 @@ pool-water-balance/
 │   ├── test_rsi.py
 │   ├── test_dosing.py
 │   └── test_database.py
+├── config.toml                 # Pool-Konfiguration
 ├── requirements.txt
 ├── pyproject.toml
 └── README.md
@@ -62,64 +88,77 @@ pool-water-balance/
 
 ## 3. Datenmodell (SQLite)
 
-### 3.1 `pool_configs`
-| Feld | Typ | Beschreibung |
-|------|-----|--------------|
-| id | INTEGER PK | Eindeutige ID |
-| name | TEXT | Pool-Name (z. B. "Hauptpool") |
-| volume_liter | REAL | Wasservolumen in Litern |
-| pool_type | TEXT | 'chlorine', 'salt', 'alternative' |
-| target_ph_min | REAL | Ziel-pH Minimum (Standard: 7.2) |
-| target_ph_max | REAL | Ziel-pH Maximum (Standard: 7.6) |
-| target_chlorine_min | REAL | Ziel-Chlor Minimum (mg/L) |
-| target_chlorine_max | REAL | Ziel-Chlor Maximum (mg/L) |
-| target_alkalinity_min | REAL | Ziel-Alkalinität Minimum (mg/L CaCO₃) |
-| target_alkalinity_max | REAL | Ziel-Alkalinität Maximum (mg/L CaCO₃) |
-| target_hardness_min | REAL | Ziel-Härte Minimum (mg/L CaCO₃) |
-| target_hardness_max | REAL | Ziel-Härte Maximum (mg/L CaCO₃) |
-| created_at | TIMESTAMP | Erstellungsdatum |
+Keine Pool-Konfiguration in DB (Single-User, Config via `config.toml`).
 
-### 3.2 `readings`
+### 3.1 `readings`
 | Feld | Typ | Beschreibung |
 |------|-----|--------------|
 | id | INTEGER PK | Eindeutige ID |
-| pool_id | INTEGER FK | Referenz auf pool_configs |
 | timestamp | TIMESTAMP | Messzeitpunkt |
 | ph | REAL | pH-Wert |
-| chlorine_free | REAL | Freies Chlor (mg/L) |
-| chlorine_total | REAL | Gesamtchlor (mg/L) |
+| chlorine | REAL | Freies Chlor (mg/L) |
 | alkalinity | REAL | Alkalinität (mg/L CaCO₃) |
 | hardness | REAL | Calciumhärte (mg/L CaCO₃) |
 | temperature_c | REAL | Wassertemperatur (°C) |
-| cyanuric_acid | REAL | Zyanursäure (mg/L) |
-| salt_ppm | REAL | Salzgehalt (ppm) |
 | lsi_value | REAL | Berechneter LSI |
 | rsi_value | REAL | Berechneter RSI |
+| dosing_recommendation | TEXT | JSON: empfohlene Dosierung |
 | notes | TEXT | Notizen |
 
-### 3.3 `maintenance_tasks`
+### 3.2 `maintenance_tasks`
 | Feld | Typ | Beschreibung |
 |------|-----|--------------|
 | id | INTEGER PK | Eindeutige ID |
-| pool_id | INTEGER FK | Referenz auf pool_configs |
-| task_type | TEXT | 'filter_clean', 'backwash', 'chemical_check', 'equipment_check', 'custom' |
+| task_type | TEXT | 'wasserwechsel', 'filter_reinigen', 'chemie_pruefen', 'custom' |
 | title | TEXT | Aufgaben-Titel |
 | description | TEXT | Beschreibung |
 | due_date | DATE | Fälligkeitsdatum |
 | interval_days | INTEGER | Wiederholungsintervall (0 = einmalig) |
 | completed | BOOLEAN | Erledigt |
 | completed_at | TIMESTAMP | Erledigungszeitpunkt |
-| notes | TEXT | Notizen |
 
-### 3.4 `photos`
+### 3.3 `photos`
 | Feld | Typ | Beschreibung |
 |------|-----|--------------|
 | id | INTEGER PK | Eindeutige ID |
-| pool_id | INTEGER FK | Referenz auf pool_configs |
 | timestamp | TIMESTAMP | Aufnahmezeitpunkt |
 | image_path | TEXT | Relativer Pfad zum Bild |
 | caption | TEXT | Bildunterschrift |
-| tags | TEXT | Komma-getrennte Tags |
+
+### 3.4 `config.toml` (keine DB-Tabelle)
+```toml
+[pool]
+name = "Lay-Z-Spa Ibiza"
+volume_liter = 1000
+pool_type = "chlorine"
+
+[targets]
+ph_min = 7.2
+ph_max = 7.6
+chlorine_min = 0.5
+chlorine_max = 3.0
+alkalinity_min = 80
+alkalinity_max = 120
+hardness_min = 150
+hardness_max = 250
+temperature_default = 35
+
+[products]
+  [products.ph_minus]
+  name = "Summer Fun pH-Minus Granulat"
+  factor = 1.4
+  unit = "g"
+
+  [products.ph_plus]
+  name = "Summer Fun pH-Plus Granulat"
+  factor = 0.74
+  unit = "g"
+
+  [products.chlorine_tabs]
+  name = "Summer Fun Perfect Care Tabs 20g"
+  active_chlorine_per_tab = 18.0
+  unit = "Tabletten"
+```
 
 ---
 
@@ -157,67 +196,61 @@ D = log10(Alk)
 - 7.5–8.5: Leicht korrosiv
 - > 8.5: Stark korrosiv
 
-### 4.3 Dosierberechnungen
-Stöchiometrische Berechnungen pro Chemikalie:
+### 4.3 Dosierberechnungen (produktspezifisch)
 
-| Chemikalie | Zweck | Formel (vereinfacht) |
-|------------|-------|---------------------|
-| pH-Heber (Na₂CO₃) | pH ↑ | g = (ΔpH × Vol × 0.74) / 1000 |
-| pH-Senker (NaHSO₄) | pH ↓ | g = (ΔpH × Vol × 1.4) / 1000 |
-| Chlor-Granulat (Ca(OCl)₂) | Chlor ↑ | g = (ΔCl × Vol) / (0.65 × 1000) |
-| Flüssigchlor (NaOCl 12%) | Chlor ↑ | ml = (ΔCl × Vol) / (0.12 × 1000) |
-| Alkalinitätsheber (NaHCO₃) | Alk ↑ | g = (ΔAlk × Vol × 1.5) / 1000 |
-| Härteheber (CaCl₂) | Härte ↑ | g = (ΔHärte × Vol × 1.33) / 1000 |
-| Zyanursäure | Stabilisator ↑ | g = (ΔCYA × Vol) / 1000 |
-| Salz (NaCl) | Salzwasser-Pool | kg = (ΔSalt × Vol) / 1_000_000 |
+| Produkt | Wirkung | Formel |
+|---------|---------|--------|
+| **pH-Minus Granulat** (NaHSO₄) | pH senken | `g = (aktueller_pH - ziel_pH) × volumen_m³ × 1.4` |
+| **pH-Plus Granulat** (Na₂CO₃) | pH heben | `g = (ziel_pH - aktueller_pH) × volumen_m³ × 0.74` |
+| **Perfect Care Tabs 20g** | Chlor erhöhen | `tabletten = ceil((ziel_Cl - aktuelles_Cl) × volumen_m³ / 18.0)` |
 
-*Hinweis: Exakte Faktoren hängen von Produktreinheit ab; Konfiguration über UI anpassbar.*
+**Beispiel (1000L / 1 m³):**
+- pH 6.8 → Ziel 7.4: `(7.4 - 6.8) × 1 × 0.74 = 0.44 g` pH-Plus Granulat
+- pH 8.0 → Ziel 7.4: `(8.0 - 7.4) × 1 × 1.4 = 0.84 g` pH-Minus Granulat
+- Chlor 0 → Ziel 1.5: `ceil(1.5 × 1 / 18.0) = 1` Tablette
+
+*Hinweis: Faktoren sind produktspezifisch und in `config.toml` einstellbar.*
 
 ---
 
 ## 5. UI-Seiten (Deutsch)
 
 ### 5.1 Dashboard (`app.py`)
-- Übersicht aller Pools mit aktuellem Status (LSI/RSI Ampel)
-- Letzte Messwerte pro Pool
+- Pool-Info (Name, Volumen, aktueller Status)
+- Letzte Messwerte (aus DB)
+- Wasserbalance-Ampel (LSI/RSI) auf Basis der letzten Messung
 - Nächste fällige Wartungsaufgaben
-- Schnellzugriff: Neue Messung erfassen
+- Schnellzugriff: "Neue Messung" Button
 
-### 5.2 Wasserrechner (`pages/1_Wasserrechner.py`)
-- Eingabeformular: pH, Chlor, Alkalinität, Härte, Temp, CYA, Salz
-- Pool-Auswahl (Konfiguration)
-- Live-Berechnung von LSI & RSI bei Eingabe
-- Grafische Anzeige: LSI/RSI Skala mit Farbcodierung
-- Empfehlung: "Wasser ist korrosiv / ausgeglichen / kalkausfällend"
-- Speichern als Messwert in Historie
+### 5.2 Wasserrechner + Dosierung (`pages/1_Wasserrechner.py`)
+- **Eingabeformular:** pH, Chlor, Alkalinität, Härte, Temperatur (Slider/Numpad)
+- **Live-Berechnung von LSI & RSI** bei jeder Eingabeänderung
+- **Grafik:** Farbige LSI/RSI-Skala mit Zeigerposition
+- **Bewertung:** "Wasser ist korrosiv / ausgeglichen / kalkausfällend" (farblich)
+- **Dosierempfehlung:** Tabelle mit Chemikalie, Menge, Einheit
+  - pH zu niedrig → pH-Plus Granulat (X g)
+  - pH zu hoch → pH-Minus Granulat (X g)
+  - Chlor zu niedrig → ¼/½/1 Tablette(n) Perfect Care Tabs
+  - (Wenn alles OK: grüner Haken, "Wasser ist im Gleichgewicht")
+- **Speichern:** Messwert + Dosierempfehlung in Historie übernehmen
 
-### 5.3 Dosierung (`pages/2_Dosierung.py`)
-- Zielwerte eingeben (oder aus Pool-Config übernehmen)
-- Aktuelle Werte aus letzter Messung laden
-- Berechnung: Welche Chemikalien in welcher Menge?
-- Ausgabe: Tabelle mit Chemikalie, Menge, Einheit, Hinweis
-- Optional: Einkaufsliste exportieren (CSV/PDF)
-
-### 5.4 Verlauf (`pages/3_Verlauf.py`)
-- Pool-Auswahl
-- Zeitreihen-Charts (Plotly): pH, Chlor, Alkalinität, Härte, LSI, RSI
-- Filter: Zeitraum (Woche, Monat, Jahr, benutzerdefiniert)
+### 5.3 Verlauf (`pages/2_Verlauf.py`)
+- Zeitreihen-Charts (Plotly): pH, Chlor, LSI, RSI
+- Filter: Zeitraum (letzte Woche, Monat, alles)
 - Tabellarische Ansicht aller Messwerte
-- Export: CSV, JSON
+- Export als CSV
 
-### 5.5 Wartung (`pages/4_Wartung.py`)
-- Liste aller Aufgaben (offen / erledigt / überfällig)
-- Neue Aufgabe anlegen: Typ, Titel, Beschreibung, Fälligkeitsdatum, Intervall
-- Aufgabe als erledigt markieren
-- Automatische Wiederholung basierend auf Intervall
-- Erinnerungen: Überfällige Aufgaben hervorheben
+### 5.4 Wartung (`pages/3_Wartung.py`)
+- Aufgabenliste: offen / erledigt / überfällig
+- Aufgaben: Wasserwechsel alle 2-3 Tage, Filter reinigen, Chemie prüfen
+- Neue Aufgabe anlegen, als erledigt markieren
+- Automatische Wiederholung
 
-### 5.6 Fotos (`pages/5_Fotos.py`)
-- Foto hochladen (Drag & Drop oder Dateiauswahl)
-- Automatische Verkleinerung/Thumbnail (Pillow)
-- Metadaten: Pool, Datum, Caption, Tags
-- Galerie-Ansicht mit Filter (Pool, Tag, Zeitraum)
-- Löschen von Fotos
+### 5.5 Fotos (`pages/4_Fotos.py`)
+- Foto hochladen (Kamera/Datei)
+- Thumbnail-Galerie
+- Bildunterschriften
+- Bilder löschen
 
 ---
 
@@ -257,7 +290,6 @@ CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0"]
 
 - **Unit Tests:** `pool_calculations/` Module (LSI, RSI, Dosing) - pytest
 - **Integration Tests:** Database Repository CRUD Operationen
-- **UI Tests:** Playwright für kritische User Flows (optional, später)
 - **Coverage Ziel:** ≥ 80% für Berechnungslogik
 
 ---
@@ -271,7 +303,6 @@ plotly>=5.20
 pillow>=10.0
 pandas>=2.1
 pytest>=7.4
-python-dateutil>=2.8
 ```
 
 ---
