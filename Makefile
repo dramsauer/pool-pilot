@@ -1,16 +1,17 @@
 SHELL := /bin/bash
 APP_NAME := pool-water-balance
 DOCKER_COMPOSE := docker compose
+PYTHON := python3
 
 .PHONY: help install run start stop quit logs test build dev clean shell restart
 
 help:
-	@echo "═══════════════════════════════════════════"
+	@echo "================================================"
 	@echo "  $(APP_NAME) - Pool Water Balance"
-	@echo "═══════════════════════════════════════════"
+	@echo "================================================"
 	@echo ""
 	@echo "  Development:"
-	@echo "    make install     Install Python dependencies"
+	@echo "    make install     Install project + dev deps"
 	@echo "    make dev         Run app locally (streamlit)"
 	@echo "    make test        Run all tests"
 	@echo ""
@@ -33,10 +34,10 @@ install:
 	pip install --no-cache-dir -r requirements.txt
 
 dev:
-	streamlit run app.py --server.address=0.0.0.0 --server.port=8501
+	$(PYTHON) -m streamlit run app.py --server.address=0.0.0.0 --server.port=8501
 
 test:
-	python -m pytest tests/ -v
+	$(PYTHON) -m pytest tests/ -v
 
 build:
 	$(DOCKER_COMPOSE) build
@@ -63,4 +64,5 @@ clean:
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
 	rm -rf data/*.db 2>/dev/null || true
 	rm -rf data/photos/* 2>/dev/null || true
+	rm -rf *.egg-info 2>/dev/null || true
 	@echo "Cleaned up."

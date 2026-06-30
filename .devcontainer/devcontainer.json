@@ -19,7 +19,6 @@
     "source=${env:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,optional=true"
   ],
   "forwardPorts": [8501],
-  "postCreateCommand": "pip install --no-cache-dir -r requirements.txt",
   "remoteUser": "vscode",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
