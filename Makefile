@@ -41,7 +41,7 @@ install:
 	tomli>=2.0
 
 dev:
-	$(PYTHON) -m streamlit run app.py --server.address=0.0.0.0 --server.port=8501
+	$(PYTHON) -m streamlit run Wasserrechner.py --server.address=0.0.0.0 --server.port=8501
 
 test:
 	$(PYTHON) -m pytest tests/ -v
