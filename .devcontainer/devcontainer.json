@@ -23,7 +23,7 @@
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
   "postCreateCommand": "sudo chown -R vscode:vscode /app",
-  "postStartCommand": "code Wasserrechner.py",
+  "postStartCommand": "nohup streamlit run Wasserrechner.py --server.headless=true --server.port=8501 > /tmp/streamlit.log 2>&1 &",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/common-utils:2": {
