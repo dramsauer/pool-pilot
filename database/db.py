@@ -34,6 +34,7 @@ def get_session(engine=None) -> Session:
 def _migrate_schema(session: Session):
     """Add missing columns to existing tables for schema upgrades."""
     from sqlalchemy import text
+
     inspector = inspect(session.bind)
 
     existing = {c["name"] for c in inspector.get_columns("readings")}
@@ -48,10 +49,15 @@ def _migrate_schema(session: Session):
             session.execute(text(f"ALTER TABLE photos ADD COLUMN {col} {t}"))
 
     existing = {c["name"] for c in inspector.get_columns("maintenance_tasks")}
-    for col, t in [("pool_id", "INTEGER"), ("reading_id", "INTEGER"),
-                   ("product_id", "INTEGER"), ("parent_task_id", "INTEGER"),
-                   ("follow_up_days", "INTEGER DEFAULT 0"),
-                   ("executed_at", "DATETIME"), ("executed_notes", "TEXT")]:
+    for col, t in [
+        ("pool_id", "INTEGER"),
+        ("reading_id", "INTEGER"),
+        ("product_id", "INTEGER"),
+        ("parent_task_id", "INTEGER"),
+        ("follow_up_days", "INTEGER DEFAULT 0"),
+        ("executed_at", "DATETIME"),
+        ("executed_notes", "TEXT"),
+    ]:
         if col not in existing:
             session.execute(text(f"ALTER TABLE maintenance_tasks ADD COLUMN {col} {t}"))
 
@@ -108,13 +114,28 @@ def migrate_from_config(session: Session):
 
     # Create default products
     products_data = [
-        Product(name="Summer Fun pH-Minus Granulat", typ="ph_minus",
-                dosage_factor=1.4, unit="g", interval_days=0),
-        Product(name="Summer Fun pH-Plus Granulat", typ="ph_plus",
-                dosage_factor=0.74, unit="g", interval_days=0),
-        Product(name="Summer Fun Perfect Care Tabs 20g", typ="chlorine",
-                dosage_factor=0, unit="Tablette(n)",
-                active_chlorine_per_tab=18.0, interval_days=7),
+        Product(
+            name="Summer Fun pH-Minus Granulat",
+            typ="ph_minus",
+            dosage_factor=1.4,
+            unit="g",
+            interval_days=0,
+        ),
+        Product(
+            name="Summer Fun pH-Plus Granulat",
+            typ="ph_plus",
+            dosage_factor=0.74,
+            unit="g",
+            interval_days=0,
+        ),
+        Product(
+            name="Summer Fun Perfect Care Tabs 20g",
+            typ="chlorine",
+            dosage_factor=0,
+            unit="Tablette(n)",
+            active_chlorine_per_tab=18.0,
+            interval_days=7,
+        ),
     ]
     for prod in products_data:
         session.add(prod)

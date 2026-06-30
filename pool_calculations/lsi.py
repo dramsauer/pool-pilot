@@ -13,7 +13,9 @@ def alkalinity_factor(alkalinity_mgl: float) -> float:
     return math.log10(alkalinity_mgl)
 
 
-def calculate_lsi(ph: float, temp_c: float, hardness: float, alkalinity: float) -> float:
+def calculate_lsi(
+    ph: float, temp_c: float, hardness: float, alkalinity: float
+) -> float:
     tf = temperature_factor(temp_c)
     cf = calcium_factor(hardness)
     af = alkalinity_factor(alkalinity)

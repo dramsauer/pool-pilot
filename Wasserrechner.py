@@ -1,23 +1,28 @@
 import datetime
 import os
-import json
 import io
 import streamlit as st
 import plotly.graph_objects as go
 from PIL import Image
 from database.db import get_engine, init_db, get_session
 from database.repository import (
-    get_pools, get_pool, get_products,
-    save_reading_for_pool, save_task, save_photo,
-    complete_task_with_notes,
-    get_readings_for_pool,
+    get_pools,
+    get_pool,
+    get_products,
+    save_reading_for_pool,
+    save_task,
+    save_photo,
 )
 from pool_calculations.lsi import calculate_lsi, categorize_lsi
 from pool_calculations.rsi import calculate_rsi, categorize_rsi
 from pool_calculations.dosing import recommend_dosing_from_db
 from pool_calculations.models import WaterTest
 
-st.set_page_config(page_title="PoolPilot", page_icon="🏊", layout="centered")
+st.set_page_config(
+    page_title="PoolPilot - Dein intelligenter Pool-Helfer",
+    page_icon="🏊",
+    layout="centered",
+)
 
 engine = get_engine()
 init_db(engine)
@@ -26,13 +31,16 @@ session = get_session(engine)
 # Pool selector
 pools = get_pools(session)
 if not pools:
-    st.warning("Kein Pool konfiguriert. Bitte lege unter 'Pools & Produkte' einen Pool an.")
+    st.warning(
+        "Kein Pool konfiguriert. Bitte lege unter 'Pools & Produkte' einen Pool an."
+    )
     st.page_link("pages/01_Poolverwaltung.py", label="→ Pools & Produkte")
     st.stop()
 
 pool_options = {p.id: f"{p.name} ({p.volume_liter} L)" for p in pools}
 selected_pool_id = st.selectbox(
-    "Pool", options=list(pool_options.keys()),
+    "Pool",
+    options=list(pool_options.keys()),
     format_func=lambda x: pool_options[x],
     key="pool_selector",
 )
@@ -45,10 +53,13 @@ products = get_products(session)
 tw_defaults = {"alkalinity": 100, "hardness": 200}
 if pool.trinkwasser_id:
     from database.repository import get_trinkwasser
+
     tw = get_trinkwasser(session, pool.trinkwasser_id)
     if tw:
-        tw_defaults = {"alkalinity": tw.alkalinity_default,
-                       "hardness": tw.calcium_hardness_default}
+        tw_defaults = {
+            "alkalinity": tw.alkalinity_default,
+            "hardness": tw.calcium_hardness_default,
+        }
 
 st.title("🏊 PoolPilot")
 st.caption(f"{pool.name} · {pool.volume_liter} Liter · {pool.pool_type}")
@@ -66,37 +77,54 @@ st.subheader("1️⃣ Messwerte erfassen")
 
 help_texts = {
     "ph": "Der pH-Wert beeinflusst Chlorwirkung und Wasserbalance. "
-          "Teststreifen messen von 6,2 bis 8,4. Ziel: 7,2–7,6.",
+    "Teststreifen messen von 6,2 bis 8,4. Ziel: 7,2–7,6.",
     "chlorine": "Freies Chlor in mg/L. "
-                "Teststreifen messen freies Chlor. Ziel: 0,5–3,0 mg/L.",
+    "Teststreifen messen freies Chlor. Ziel: 0,5–3,0 mg/L.",
     "temp": "Wassertemperatur in °C. Beeinflusst LSI/RSI direkt.",
     "alk": "Säurepufferkapazität (mg/L CaCO₃). "
-           "Verhindert pH-Schwankungen. Wird NICHT mit Teststreifen gemessen. "
-           "Trinkwasser-Default: {} mg/L".format(tw_defaults["alkalinity"]),
+    "Verhindert pH-Schwankungen. Wird NICHT mit Teststreifen gemessen. "
+    "Trinkwasser-Default: {} mg/L".format(tw_defaults["alkalinity"]),
     "hard": "Calcium-Ionen (mg/L CaCO₃, NICHT Gesamthärte). "
-            "Wichtig für LSI-Berechnung. Wird NICHT mit Teststreifen gemessen. "
-            "Trinkwasser-Default: {} mg/L".format(tw_defaults["hardness"]),
+    "Wichtig für LSI-Berechnung. Wird NICHT mit Teststreifen gemessen. "
+    "Trinkwasser-Default: {} mg/L".format(tw_defaults["hardness"]),
 }
 
 col1, col2 = st.columns(2)
 
 with col1:
-    ph = st.slider("pH-Wert ⓘ", 6.2, 8.4, 7.4, 0.1,
-                    help=help_texts["ph"])
-    chlorine = st.slider("Chlor (mg/L) ⓘ", 0.0, 10.0, 1.5, 0.1,
-                          help=help_texts["chlorine"])
-    temperature = st.slider("Wassertemperatur (°C) ⓘ", 0, 45,
-                              int(pool.temperature_default), 1,
-                              help=help_texts["temp"])
+    ph = st.slider("pH-Wert ⓘ", 6.2, 8.4, 7.4, 0.1, help=help_texts["ph"])
+    chlorine = st.slider(
+        "Chlor (mg/L) ⓘ", 0.0, 10.0, 1.5, 0.1, help=help_texts["chlorine"]
+    )
+    temperature = st.slider(
+        "Wassertemperatur (°C) ⓘ",
+        0,
+        45,
+        int(pool.temperature_default),
+        1,
+        help=help_texts["temp"],
+    )
 
 with col2:
-    alkalinity = st.slider("Alkalinität (mg/L CaCO₃) ⓘ", 0, 500,
-                             int(tw_defaults["alkalinity"]), 10,
-                             help=help_texts["alk"])
-    hardness = st.slider("Calciumhärte (mg/L CaCO₃) ⓘ", 0, 500,
-                           int(tw_defaults["hardness"]), 10,
-                           help=help_texts["hard"])
-    notes = st.text_input("📝 Notizen (optional)", placeholder="z. B. Wetter, Wasserstand...")
+    alkalinity = st.slider(
+        "Alkalinität (mg/L CaCO₃) ⓘ",
+        0,
+        500,
+        int(tw_defaults["alkalinity"]),
+        10,
+        help=help_texts["alk"],
+    )
+    hardness = st.slider(
+        "Calciumhärte (mg/L CaCO₃) ⓘ",
+        0,
+        500,
+        int(tw_defaults["hardness"]),
+        10,
+        help=help_texts["hard"],
+    )
+    notes = st.text_input(
+        "📝 Notizen (optional)", placeholder="z. B. Wetter, Wasserstand..."
+    )
 
 # Live calculation
 lsi = calculate_lsi(ph, temperature, hardness, alkalinity)
@@ -104,8 +132,13 @@ rsi = calculate_rsi(ph, temperature, hardness, alkalinity)
 lsi_cat = categorize_lsi(lsi)
 rsi_cat = categorize_rsi(rsi)
 
-test = WaterTest(ph=ph, chlorine=chlorine, alkalinity=alkalinity,
-                 hardness=hardness, temperature_c=temperature)
+test = WaterTest(
+    ph=ph,
+    chlorine=chlorine,
+    alkalinity=alkalinity,
+    hardness=hardness,
+    temperature_c=temperature,
+)
 dosing = recommend_dosing_from_db(test, pool, products)
 
 st.divider()
@@ -116,9 +149,15 @@ st.subheader("2️⃣ Wasserbalance")
 col_lsi, col_rsi, col_status = st.columns(3)
 
 with col_lsi:
-    lsi_color = "green" if lsi_cat == "ausgeglichen" else ("red" if lsi_cat == "korrosiv" else "orange")
-    st.markdown(f"### LSI: <span style='color:{lsi_color}'>{lsi:+.2f}</span>",
-                unsafe_allow_html=True)
+    lsi_color = (
+        "green"
+        if lsi_cat == "ausgeglichen"
+        else ("red" if lsi_cat == "korrosiv" else "orange")
+    )
+    st.markdown(
+        f"### LSI: <span style='color:{lsi_color}'>{lsi:+.2f}</span>",
+        unsafe_allow_html=True,
+    )
     st.caption(f"→ {lsi_cat}")
 
 with col_rsi:
@@ -133,28 +172,38 @@ with col_status:
 
 # Plotly gauge
 gauge_fig = go.Figure()
-gauge_fig.add_trace(go.Indicator(
-    mode="gauge+number",
-    value=lsi,
-    title={"text": "LSI – Live"},
-    gauge={
-        "axis": {"range": [-2, 2]},
-        "bar": {"color": "darkblue"},
-        "steps": [
-            {"range": [-2, -0.5], "color": "red"},
-            {"range": [-0.5, 0.5], "color": "green"},
-            {"range": [0.5, 2], "color": "orange"},
-        ],
-    },
-))
+gauge_fig.add_trace(
+    go.Indicator(
+        mode="gauge+number",
+        value=lsi,
+        title={"text": "LSI – Live"},
+        gauge={
+            "axis": {"range": [-2, 2]},
+            "bar": {"color": "darkblue"},
+            "steps": [
+                {"range": [-2, -0.5], "color": "red"},
+                {"range": [-0.5, 0.5], "color": "green"},
+                {"range": [0.5, 2], "color": "orange"},
+            ],
+        },
+    )
+)
 st.plotly_chart(gauge_fig, use_container_width=True)
 
 # pH / Chlor leiste
 ph_ok = pool.ph_min <= ph <= pool.ph_max
 chl_ok = pool.chlorine_min <= chlorine <= pool.chlorine_max
 col_a, col_b = st.columns(2)
-col_a.metric("pH", f"{ph:.1f}", delta="✅ i.O." if ph_ok else f"⚠️ Ziel {pool.ph_min}–{pool.ph_max}")
-col_b.metric("Chlor", f"{chlorine:.1f} mg/L", delta="✅ i.O." if chl_ok else f"⚠️ Ziel {pool.chlorine_min}–{pool.chlorine_max}")
+col_a.metric(
+    "pH",
+    f"{ph:.1f}",
+    delta="✅ i.O." if ph_ok else f"⚠️ Ziel {pool.ph_min}–{pool.ph_max}",
+)
+col_b.metric(
+    "Chlor",
+    f"{chlorine:.1f} mg/L",
+    delta="✅ i.O." if chl_ok else f"⚠️ Ziel {pool.chlorine_min}–{pool.chlorine_max}",
+)
 
 st.divider()
 
@@ -169,7 +218,11 @@ if dosing:
                 st.warning(f"**{d.product}**: {d.amount:g} {d.unit}")
                 st.caption(d.reason)
             with col_b:
-                if st.button("📋 Aufgabe", key=f"task_{d.product}_{d.amount}", use_container_width=True):
+                if st.button(
+                    "📋 Aufgabe",
+                    key=f"task_{d.product}_{d.amount}",
+                    use_container_width=True,
+                ):
                     save_task(
                         session,
                         task_type="dosierung",
@@ -191,7 +244,9 @@ if dosing:
                 key=f"exec_{d.product}",
             )
         with exec_col2:
-            if st.button("✅ Erledigt", key=f"done_{d.product}", use_container_width=True):
+            if st.button(
+                "✅ Erledigt", key=f"done_{d.product}", use_container_width=True
+            ):
                 task_data = {
                     "date": datetime.date.today().isoformat(),
                     "time": datetime.datetime.now().strftime("%H:%M"),
@@ -211,8 +266,9 @@ if dosing:
                         task_type="nachkontrolle",
                         title=f"{d.product} – Nachkontrolle",
                         description=f"Folgeaufgabe in {d.follow_up_days} Tagen "
-                                    f"(automatisch erzeugt am {datetime.date.today().isoformat()})",
-                        due_date=datetime.date.today() + datetime.timedelta(days=d.follow_up_days),
+                        f"(automatisch erzeugt am {datetime.date.today().isoformat()})",
+                        due_date=datetime.date.today()
+                        + datetime.timedelta(days=d.follow_up_days),
                         interval_days=d.follow_up_days,
                     )
                 st.rerun()
@@ -223,14 +279,20 @@ st.divider()
 
 # Photo section
 st.subheader("📸 Foto")
-photo_source = st.radio("Foto-Quelle", ["📁 Hochladen", "📸 Kamera"],
-                        horizontal=True, label_visibility="collapsed")
+photo_source = st.radio(
+    "Foto-Quelle",
+    ["📁 Hochladen", "📸 Kamera"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
 uploaded_file = None
 camera_file = None
 if photo_source == "📸 Kamera":
     camera_file = st.camera_input("📸 Mit Kamera aufnehmen")
 else:
-    uploaded_file = st.file_uploader("📁 Vom Gerät hochladen", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.file_uploader(
+        "📁 Vom Gerät hochladen", type=["jpg", "jpeg", "png"]
+    )
 
 photo_path = None
 photo_data = None
@@ -257,20 +319,41 @@ st.divider()
 
 # Save button
 if st.button("💾 Messung speichern", type="primary", use_container_width=True):
-    dosing_data = [{"product": d.product, "amount": d.amount, "unit": d.unit, "reason": d.reason}
-                   for d in dosing] if dosing else []
+    dosing_data = (
+        [
+            {
+                "product": d.product,
+                "amount": d.amount,
+                "unit": d.unit,
+                "reason": d.reason,
+            }
+            for d in dosing
+        ]
+        if dosing
+        else []
+    )
 
     reading = save_reading_for_pool(
-        session, pool_id=selected_pool_id,
-        ph=ph, chlorine=chlorine, alkalinity=alkalinity, hardness=hardness,
-        temperature_c=temperature, lsi=lsi, rsi=rsi,
-        dosing=dosing_data, notes=notes,
+        session,
+        pool_id=selected_pool_id,
+        ph=ph,
+        chlorine=chlorine,
+        alkalinity=alkalinity,
+        hardness=hardness,
+        temperature_c=temperature,
+        lsi=lsi,
+        rsi=rsi,
+        dosing=dosing_data,
+        notes=notes,
     )
 
     # Link photo if taken
     if photo_path:
-        save_photo(session, image_path=photo_path,
-                   caption=f"Messung {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}")
+        save_photo(
+            session,
+            image_path=photo_path,
+            caption=f"Messung {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}",
+        )
 
     # Create tasks for dosing if not already done
     if not st.session_state.get("task_created"):
@@ -293,5 +376,14 @@ if st.button("💾 Messung speichern", type="primary", use_container_width=True)
 # Show last saved result
 if st.session_state.last_dosing:
     with st.expander("Letzte gespeicherte Messung"):
-        st.json([{"product": d.product, "amount": d.amount, "unit": d.unit, "reason": d.reason}
-                 for d in st.session_state.last_dosing])
+        st.json(
+            [
+                {
+                    "product": d.product,
+                    "amount": d.amount,
+                    "unit": d.unit,
+                    "reason": d.reason,
+                }
+                for d in st.session_state.last_dosing
+            ]
+        )

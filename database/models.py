@@ -1,5 +1,16 @@
 import datetime
-from sqlalchemy import Column, Integer, Float, String, Text, DateTime, Boolean, Date, LargeBinary, ForeignKey
+from sqlalchemy import (
+    Column,
+    Integer,
+    Float,
+    String,
+    Text,
+    DateTime,
+    Boolean,
+    Date,
+    LargeBinary,
+    ForeignKey,
+)
 from sqlalchemy.orm import DeclarativeBase
 
 

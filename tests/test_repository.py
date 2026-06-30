@@ -2,9 +2,27 @@ import datetime
 from database.db import get_engine, get_session
 from database.models import Base
 from database.repository import (
-    save_reading, get_readings, get_latest_reading, get_readings_since,
-    save_task, get_pending_tasks, complete_task,
-    save_photo, get_photos, delete_photo,
+    save_reading,
+    get_readings,
+    get_latest_reading,
+    save_task,
+    get_pending_tasks,
+    complete_task,
+    save_photo,
+    get_photos,
+    delete_photo,
+    save_pool,
+    get_pools,
+    update_pool,
+    delete_pool,
+    save_trinkwasser,
+    get_trinkwasser_quellen,
+    delete_trinkwasser,
+    save_product,
+    get_products,
+    update_product,
+    delete_product,
+    get_readings_for_pool,
 )
 
 
@@ -17,8 +35,16 @@ def setup():
 
 def test_save_and_get_readings():
     session = setup()
-    save_reading(session, ph=7.4, chlorine=1.5, alkalinity=100, hardness=200,
-                 temperature_c=35, lsi=0.5, rsi=7.0)
+    save_reading(
+        session,
+        ph=7.4,
+        chlorine=1.5,
+        alkalinity=100,
+        hardness=200,
+        temperature_c=35,
+        lsi=0.5,
+        rsi=7.0,
+    )
     readings = get_readings(session)
     assert len(readings) == 1
     assert readings[0].ph == 7.4
@@ -26,26 +52,51 @@ def test_save_and_get_readings():
 
 def test_latest_reading():
     session = setup()
-    save_reading(session, ph=7.4, chlorine=1.5, alkalinity=100, hardness=200,
-                 temperature_c=35, lsi=0.5, rsi=7.0)
-    save_reading(session, ph=7.6, chlorine=2.0, alkalinity=110, hardness=210,
-                 temperature_c=36, lsi=0.6, rsi=7.2)
+    save_reading(
+        session,
+        ph=7.4,
+        chlorine=1.5,
+        alkalinity=100,
+        hardness=200,
+        temperature_c=35,
+        lsi=0.5,
+        rsi=7.0,
+    )
+    save_reading(
+        session,
+        ph=7.6,
+        chlorine=2.0,
+        alkalinity=110,
+        hardness=210,
+        temperature_c=36,
+        lsi=0.6,
+        rsi=7.2,
+    )
     latest = get_latest_reading(session)
     assert latest.ph == 7.6
 
 
 def test_pending_tasks():
     session = setup()
-    save_task(session, task_type="wasserwechsel", title="Wasserwechsel",
-              due_date=datetime.date.today(), interval_days=3)
+    save_task(
+        session,
+        task_type="wasserwechsel",
+        title="Wasserwechsel",
+        due_date=datetime.date.today(),
+        interval_days=3,
+    )
     pending = get_pending_tasks(session)
     assert len(pending) == 1
 
 
 def test_complete_task():
     session = setup()
-    task = save_task(session, task_type="wasserwechsel", title="Wasserwechsel",
-                     due_date=datetime.date.today())
+    task = save_task(
+        session,
+        task_type="wasserwechsel",
+        title="Wasserwechsel",
+        due_date=datetime.date.today(),
+    )
     complete_task(session, task.id)
     pending = get_pending_tasks(session)
     assert len(pending) == 0
@@ -60,15 +111,6 @@ def test_photo_crud():
     delete_photo(session, photo.id)
     photos = get_photos(session)
     assert len(photos) == 0
-
-
-from database.repository import (
-    save_pool, get_pools, update_pool, delete_pool,
-    save_trinkwasser, get_trinkwasser_quellen, delete_trinkwasser,
-    save_product, get_products, update_product, delete_product,
-    get_readings_for_pool,
-)
-from database.models import Pool, Trinkwasser, Product
 
 
 def test_pool_crud():
@@ -90,7 +132,9 @@ def test_pool_crud():
 
 def test_trinkwasser_crud():
     session = setup()
-    tw = save_trinkwasser(session, name="Stamsried", ph_default=7.5, alkalinity_default=145.0)
+    tw = save_trinkwasser(
+        session, name="Stamsried", ph_default=7.5, alkalinity_default=145.0
+    )
     assert tw.id is not None
 
     quellen = get_trinkwasser_quellen(session)
@@ -103,7 +147,9 @@ def test_trinkwasser_crud():
 
 def test_product_crud():
     session = setup()
-    prod = save_product(session, name="pH-Minus", typ="ph_minus", dosage_factor=1.4, unit="g")
+    prod = save_product(
+        session, name="pH-Minus", typ="ph_minus", dosage_factor=1.4, unit="g"
+    )
     assert prod.id is not None
 
     products = get_products(session)

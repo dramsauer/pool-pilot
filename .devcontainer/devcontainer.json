@@ -16,6 +16,8 @@
   },
   "forwardPorts": [8501],
   "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "postCreateCommand": "sudo chown -R vscode:vscode /app",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/common-utils:2": {

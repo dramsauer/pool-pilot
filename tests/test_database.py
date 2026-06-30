@@ -1,6 +1,14 @@
 import datetime
-from database.db import get_engine, init_db, get_session, migrate_from_config
-from database.models import Base, Pool, Trinkwasser, Product, Reading, MaintenanceTask, Photo
+from database.db import get_engine, get_session, migrate_from_config
+from database.models import (
+    Base,
+    Pool,
+    Trinkwasser,
+    Product,
+    Reading,
+    MaintenanceTask,
+    Photo,
+)
 
 
 def create_memory_session():
@@ -22,7 +30,12 @@ def test_create_pool():
 
 def test_create_trinkwasser():
     session = create_memory_session()
-    tw = Trinkwasser(name="Stamsried", ph_default=7.5, alkalinity_default=145.0, calcium_hardness_default=185.0)
+    tw = Trinkwasser(
+        name="Stamsried",
+        ph_default=7.5,
+        alkalinity_default=145.0,
+        calcium_hardness_default=185.0,
+    )
     session.add(tw)
     session.commit()
     saved = session.query(Trinkwasser).first()
@@ -45,7 +58,8 @@ def test_create_product():
 def test_maintenance_task_with_follow_up():
     session = create_memory_session()
     task = MaintenanceTask(
-        task_type="custom", title="Chlor prüfen",
+        task_type="custom",
+        title="Chlor prüfen",
         follow_up_days=7,
     )
     session.add(task)
@@ -58,9 +72,13 @@ def test_maintenance_task_with_follow_up():
 def test_create_readings_table():
     session = create_memory_session()
     reading = Reading(
-        ph=7.4, chlorine=1.5, alkalinity=100,
-        hardness=200, temperature_c=35,
-        lsi_value=0.5, rsi_value=7.0,
+        ph=7.4,
+        chlorine=1.5,
+        alkalinity=100,
+        hardness=200,
+        temperature_c=35,
+        lsi_value=0.5,
+        rsi_value=7.0,
     )
     session.add(reading)
     session.commit()
@@ -99,6 +117,7 @@ def test_create_photo():
 def test_migration_creates_default_pool():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
