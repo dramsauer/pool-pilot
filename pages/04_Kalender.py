@@ -2,6 +2,7 @@ import datetime
 import calendar
 import streamlit as st
 from database.db import get_engine, init_db, get_session
+from database.models import MaintenanceTask
 from database.repository import (
     get_pools, get_tasks_by_date_range,
     complete_task_with_notes,
@@ -28,6 +29,36 @@ selected_pool_id = st.selectbox(
 )
 
 now = datetime.date.today()
+
+with st.expander("📝 Aufgabe nachtragen"):
+    with st.form("retro_task"):
+        retro_pool = st.selectbox(
+            "Pool", options=pools, format_func=lambda p: p.name,
+            key="retro_pool"
+        )
+        retro_title = st.text_input("Titel", placeholder="z.B. ½ Chlor-Tablette zugegeben")
+        retro_date = st.date_input("Datum", value=now)
+        retro_done = st.checkbox("Bereits erledigt", value=True)
+        retro_notes = st.text_area("Notiz (optional)", placeholder="Details…")
+        if st.form_submit_button("💾 Aufgabe eintragen"):
+            if retro_title.strip():
+                task = MaintenanceTask(
+                    pool_id=retro_pool.id,
+                    task_type="manual",
+                    title=retro_title.strip(),
+                    description=retro_notes,
+                    due_date=retro_date,
+                    completed=retro_done,
+                    completed_at=datetime.datetime.combine(retro_date, datetime.time(12, 0)) if retro_done else None,
+                    executed_notes=retro_notes,
+                )
+                session.add(task)
+                session.commit()
+                st.success(f"✅ Aufgabe für {retro_date.strftime('%d.%m.%Y')} eingetragen!")
+                st.rerun()
+            else:
+                st.error("Bitte einen Titel eingeben.")
+
 if "cal_year" not in st.session_state:
     st.session_state.cal_year = now.year
 if "cal_month" not in st.session_state:
