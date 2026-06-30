@@ -221,10 +221,12 @@ with st.expander("ℹ️ Was bedeuten LSI und RSI?"):
 - **-0,5 bis +0,5 (ausgeglichen)**: Idealer Bereich — Wasser ist im Gleichgewicht.
 - **> +0,5 (kalkend)**: Wasser neigt zu Kalkablagerungen — trübes Wasser, Beläge.
 
-**RSI (Ryznar Stabilitäts-Index)** – praktischere Ergänzung zum LSI.
+**RSI (Ryznar Stabilitäts-Index)** – eine Weiterentwicklung des LSI, die aggressiveres Wasser zuverlässiger erkennt. Der RSI ist in der Praxis oft aussagekräftiger.
 - **< 6,0 (stark kalkend)**: Hohe Kalkabscheidung.
 - **6,0 – 7,0 (neutral)**: Ausgeglichen.
 - **> 7,0 (korrosiv)**: Wasser greift Oberflächen an.
+
+**Faustregel:** Der LSI zeigt die *Tendenz* (überschaubar, gut für schnelle Einschätzung), der RSI ist *präziser* bei der Vorhersage von Korrosion. Beide zusammen geben ein vollständiges Bild. Sind sich LSI und RSI uneinig, liegt meist ein Grenzfall vor — dann vorsichtig handeln und nach einigen Tagen neu messen.
 
 👉 [LSI Rechner & Erklärung (poolplanet.de)](https://www.poolplanet.de/ratgeber/lsi-rechner/)
 👉 [Wasserbalance im Pool (wasserfachmann.de)](https://www.wasserfachmann.de/wasserbalance/)
