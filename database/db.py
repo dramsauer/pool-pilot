@@ -20,6 +20,7 @@ def init_db(engine=None):
         engine = get_engine()
     Base.metadata.create_all(engine)
     session = get_session(engine)
+    _migrate_schema(session)
     migrate_from_config(session)
     session.close()
 
@@ -28,6 +29,33 @@ def get_session(engine=None) -> Session:
     if engine is None:
         engine = get_engine()
     return sessionmaker(bind=engine)()
+
+
+def _migrate_schema(session: Session):
+    """Add missing columns to existing tables for schema upgrades."""
+    from sqlalchemy import text
+    inspector = inspect(session.bind)
+
+    existing = {c["name"] for c in inspector.get_columns("readings")}
+    for col in ["pool_id"]:
+        if col not in existing:
+            session.execute(text(f"ALTER TABLE readings ADD COLUMN {col} INTEGER"))
+
+    existing = {c["name"] for c in inspector.get_columns("photos")}
+    for col in ["reading_id", "image_data"]:
+        if col not in existing:
+            t = "BLOB" if col == "image_data" else "INTEGER"
+            session.execute(text(f"ALTER TABLE photos ADD COLUMN {col} {t}"))
+
+    existing = {c["name"] for c in inspector.get_columns("maintenance_tasks")}
+    for col, t in [("pool_id", "INTEGER"), ("reading_id", "INTEGER"),
+                   ("product_id", "INTEGER"), ("parent_task_id", "INTEGER"),
+                   ("follow_up_days", "INTEGER DEFAULT 0"),
+                   ("executed_at", "DATETIME"), ("executed_notes", "TEXT")]:
+        if col not in existing:
+            session.execute(text(f"ALTER TABLE maintenance_tasks ADD COLUMN {col} {t}"))
+
+    session.commit()
 
 
 def migrate_from_config(session: Session):
