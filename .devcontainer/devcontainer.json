@@ -14,8 +14,8 @@
     }
   },
   "mounts": [
-    "source=/opt/homebrew/bin/opencode,target=/usr/local/bin/opencode,type=bind",
-    "source=${env:HOME}/.config/opencode,target=/home/vscode/.config/opencode,type=bind",
+    "source=/opt/homebrew/bin/opencode,target=/usr/local/bin/opencode,type=bind,optional=true",
+    "source=${env:HOME}/.config/opencode,target=/home/vscode/.config/opencode,type=bind,optional=true",
     "source=${env:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,optional=true"
   ],
   "forwardPorts": [8501],
