@@ -62,7 +62,7 @@ if pool.trinkwasser_id:
         }
 
 st.title("🏊 PoolPilot")
-st.caption(f"{pool.name} · {pool.volume_liter} Liter · {pool.pool_type}")
+st.caption(f"{pool.name} · {pool.volume_liter} Liter · {pool.pool_type} — Weil planschen im grünen Wasser keinen Spaß macht")
 
 st.divider()
 

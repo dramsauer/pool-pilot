@@ -1,6 +1,6 @@
 {
   "name": "Pool Water Balance (Dev)",
-  "dockerComposeFile": "../docker-compose.yml",
+  "dockerComposeFile": "../docker-compose.yaml",
   "service": "pool-app",
   "workspaceFolder": "/app",
   "customizations": {
