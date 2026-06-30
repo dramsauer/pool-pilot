@@ -12,8 +12,8 @@ def test_calculate_rsi():
 
 
 def test_categorize_rsi():
-    assert categorize_rsi(5.5) == "stark kalkausfällend"
-    assert categorize_rsi(6.5) == "leicht kalkausfällend"
-    assert categorize_rsi(7.2) == "stabil"
-    assert categorize_rsi(8.0) == "leicht korrosiv"
-    assert categorize_rsi(9.0) == "stark korrosiv"
+    assert categorize_rsi(5.5) == "kalkend"
+    assert categorize_rsi(6.5) == "ausgeglichen"
+    assert categorize_rsi(7.0) == "ausgeglichen"
+    assert categorize_rsi(8.0) == "korrosiv"
+    assert categorize_rsi(9.0) == "korrosiv"

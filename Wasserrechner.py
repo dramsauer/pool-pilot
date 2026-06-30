@@ -150,25 +150,41 @@ col_lsi, col_rsi, col_status = st.columns(3)
 
 with col_lsi:
     lsi_color = (
-        "green"
-        if lsi_cat == "ausgeglichen"
-        else ("red" if lsi_cat == "korrosiv" else "orange")
+        "green" if lsi_cat == "ausgeglichen"
+        else ("red" if lsi_cat in ("korrosiv", "kalkend") else "orange")
     )
+    lsi_arrow = "✅" if lsi_cat == "ausgeglichen" else ("🔴" if lsi_cat == "korrosiv" else "🟠")
     st.markdown(
-        f"### LSI: <span style='color:{lsi_color}'>{lsi:+.2f}</span>",
+        f"### {lsi_arrow} LSI: <span style='color:{lsi_color}'>{lsi:+.2f}</span>",
         unsafe_allow_html=True,
     )
-    st.caption(f"→ {lsi_cat}")
 
 with col_rsi:
-    st.markdown(f"### RSI: {rsi:.1f}")
-    st.caption(f"→ {rsi_cat}")
+    rsi_color = (
+        "green" if rsi_cat == "ausgeglichen"
+        else ("red" if rsi_cat == "korrosiv" else "orange")
+    )
+    rsi_arrow = "✅" if rsi_cat == "ausgeglichen" else ("🔴" if rsi_cat == "korrosiv" else "🟠")
+    st.markdown(
+        f"### {rsi_arrow} RSI: <span style='color:{rsi_color}'>{rsi:.1f}</span>",
+        unsafe_allow_html=True,
+    )
 
 with col_status:
-    if lsi_cat == "ausgeglichen" and rsi_cat == "neutral":
+    if lsi_cat == "ausgeglichen" and rsi_cat == "ausgeglichen":
         st.success("✅ Wasser im Gleichgewicht")
     else:
-        st.warning("⚡ Handlungsbedarf")
+        tips = []
+        if lsi_cat == "korrosiv":
+            tips.append("LSI korrosiv → pH anheben oder Härte/Alkalinität erhöhen")
+        if lsi_cat == "kalkausfällend":
+            tips.append("LSI kalkend → pH senken oder Härte/Alkalinität reduzieren")
+        if rsi_cat == "korrosiv":
+            tips.append("RSI korrosiv → pH anheben oder Härte/Alkalinität erhöhen")
+        if rsi_cat == "kalkend":
+            tips.append("RSI kalkend → pH senken oder Härte/Alkalinität reduzieren")
+        guidance = "\n\n".join(tips)
+        st.warning(f"⚡ Handlungsbedarf\n\n{guidance}")
 
 # Plotly gauges
 gauge1, gauge2 = st.columns(2)
@@ -218,15 +234,17 @@ with st.expander("ℹ️ Was bedeuten LSI und RSI?"):
     st.markdown("""
 **LSI (Langelier Sättigungs-Index)** – sagt voraus, ob das Wasser Kalk ablagert oder löst.
 - **< -0,5 (korrosiv)**: Wasser löst Kalk — greift Beckenoberflächen und Rohre an.
-- **-0,5 bis +0,5 (ausgeglichen)**: Idealer Bereich — Wasser ist im Gleichgewicht.
-- **> +0,5 (kalkend)**: Wasser neigt zu Kalkablagerungen — trübes Wasser, Beläge.
+  → *Gegenmaßnahme:* pH anheben oder Calciumhärte/Alkalinität erhöhen.
+- **-0,5 bis +0,5 (ausgeglichen)**: Idealer Bereich — Wasser im Gleichgewicht.
+- **> +0,5 (kalkausfällend)**: Wasser neigt zu Kalkablagerungen — Beläge, trübes Wasser.
+  → *Gegenmaßnahme:* pH senken oder Calciumhärte/Alkalinität reduzieren.
 
-**RSI (Ryznar Stabilitäts-Index)** – eine Weiterentwicklung des LSI, die aggressiveres Wasser zuverlässiger erkennt. Der RSI ist in der Praxis oft aussagekräftiger.
-- **< 6,0 (stark kalkend)**: Hohe Kalkabscheidung.
-- **6,0 – 7,0 (neutral)**: Ausgeglichen.
-- **> 7,0 (korrosiv)**: Wasser greift Oberflächen an.
+**RSI (Ryznar Stabilitäts-Index)** – praxistauglichere Weiterentwicklung des LSI.
+- **< 6,0 (kalkend)**: Hohe Kalkabscheidung. → *Gegenmaßnahme:* pH senken.
+- **6,0 – 7,0 (ausgeglichen)**: Optimal.
+- **> 7,0 (korrosiv)**: Korrosionsgefahr. → *Gegenmaßnahme:* pH anheben.
 
-**Faustregel:** Der LSI zeigt die *Tendenz* (überschaubar, gut für schnelle Einschätzung), der RSI ist *präziser* bei der Vorhersage von Korrosion. Beide zusammen geben ein vollständiges Bild. Sind sich LSI und RSI uneinig, liegt meist ein Grenzfall vor — dann vorsichtig handeln und nach einigen Tagen neu messen.
+**Faustregel:** Der LSI gibt die grobe Tendenz, der RSI ist präziser bei Korrosion. Sind sich beide uneinig, liegt ein Grenzfall vor — nachjustieren und in 2–3 Tagen neu messen.
 
 👉 [LSI Rechner & Erklärung (poolplanet.de)](https://www.poolplanet.de/ratgeber/lsi-rechner/)
 👉 [Wasserbalance im Pool (wasserfachmann.de)](https://www.wasserfachmann.de/wasserbalance/)

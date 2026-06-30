@@ -19,13 +19,10 @@ def calculate_rsi(
 
 
 def categorize_rsi(rsi: float) -> str:
+    """RSI: < 6.0 kalkend, 6.0–7.0 ausgeglichen, > 7.0 korrosiv."""
     if rsi < 6.0:
-        return "stark kalkausfällend"
-    elif rsi < 7.0:
-        return "leicht kalkausfällend"
-    elif rsi < 7.5:
-        return "stabil"
-    elif rsi < 8.5:
-        return "leicht korrosiv"
+        return "kalkend"
+    elif rsi <= 7.0:
+        return "ausgeglichen"
     else:
-        return "stark korrosiv"
+        return "korrosiv"
