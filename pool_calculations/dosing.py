@@ -1,50 +1,52 @@
 import math
-from pool_calculations.models import PoolConfig, WaterTest, DosingRecommendation
+from pool_calculations.models import WaterTest, DosingRecommendation
+from database.models import Product, Pool
 
 
-def get_product_config(config: PoolConfig) -> dict:
-    return {
-        "ph_minus": {"name": "Summer Fun pH-Minus Granulat", "factor": 1.4, "unit": "g"},
-        "ph_plus": {"name": "Summer Fun pH-Plus Granulat", "factor": 0.74, "unit": "g"},
-        "chlorine_tabs": {"name": "Summer Fun Perfect Care Tabs 20g", "active_cl_per_tab": 18.0, "unit": "Tablette(n)"},
-    }
-
-
-def recommend_dosing(test: WaterTest, config: PoolConfig) -> list[DosingRecommendation]:
-    products = get_product_config(config)
-    volume_m3 = config.volume_liter / 1000
+def recommend_dosing_from_db(test: WaterTest, pool: Pool, products: list[Product]) -> list[DosingRecommendation]:
+    volume_m3 = pool.volume_liter / 1000
     recommendations = []
 
-    if test.ph < config.ph_min:
-        delta = config.ph_min - test.ph
-        amount = delta * volume_m3 * products["ph_plus"]["factor"]
+    ph_minus = next((p for p in products if p.typ == "ph_minus"), None)
+    ph_plus = next((p for p in products if p.typ == "ph_plus"), None)
+    chlorine_prod = next((p for p in products if p.typ == "chlorine"), None)
+
+    if test.ph < pool.ph_min and ph_plus:
+        delta = pool.ph_min - test.ph
+        amount = delta * volume_m3 * ph_plus.dosage_factor
         amount = math.ceil(amount * 10) / 10
         recommendations.append(DosingRecommendation(
-            product=products["ph_plus"]["name"],
+            product=ph_plus.name,
             amount=amount,
-            unit=products["ph_plus"]["unit"],
-            reason=f"pH zu niedrig ({test.ph} -> Ziel {config.ph_min})",
+            unit=ph_plus.unit,
+            reason=f"pH zu niedrig ({test.ph} \u2192 Ziel {pool.ph_min})",
+            product_id=ph_plus.id,
+            follow_up_days=ph_plus.interval_days,
         ))
 
-    elif test.ph > config.ph_max:
-        delta = test.ph - config.ph_max
-        amount = delta * volume_m3 * products["ph_minus"]["factor"]
+    elif test.ph > pool.ph_max and ph_minus:
+        delta = test.ph - pool.ph_max
+        amount = delta * volume_m3 * ph_minus.dosage_factor
         amount = math.ceil(amount * 10) / 10
         recommendations.append(DosingRecommendation(
-            product=products["ph_minus"]["name"],
+            product=ph_minus.name,
             amount=amount,
-            unit=products["ph_minus"]["unit"],
-            reason=f"pH zu hoch ({test.ph} -> Ziel {config.ph_max})",
+            unit=ph_minus.unit,
+            reason=f"pH zu hoch ({test.ph} \u2192 Ziel {pool.ph_max})",
+            product_id=ph_minus.id,
+            follow_up_days=ph_minus.interval_days,
         ))
 
-    if test.chlorine < config.chlorine_min:
-        delta = config.chlorine_min - test.chlorine
-        tabs_needed = math.ceil(delta * volume_m3 / products["chlorine_tabs"]["active_cl_per_tab"])
+    if test.chlorine < pool.chlorine_min and chlorine_prod and chlorine_prod.active_chlorine_per_tab:
+        delta = pool.chlorine_min - test.chlorine
+        tabs_needed = math.ceil(delta * volume_m3 / chlorine_prod.active_chlorine_per_tab)
         recommendations.append(DosingRecommendation(
-            product=products["chlorine_tabs"]["name"],
+            product=chlorine_prod.name,
             amount=float(tabs_needed),
-            unit=products["chlorine_tabs"]["unit"],
-            reason=f"Chlor zu niedrig ({test.chlorine} -> Ziel {config.chlorine_min} mg/L)",
+            unit=chlorine_prod.unit,
+            reason=f"Chlor zu niedrig ({test.chlorine} \u2192 Ziel {pool.chlorine_min} mg/L)",
+            product_id=chlorine_prod.id,
+            follow_up_days=chlorine_prod.interval_days,
         ))
 
     return recommendations

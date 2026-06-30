@@ -5,10 +5,10 @@ except ModuleNotFoundError:
 
 from pathlib import Path
 from typing import Optional
-from pool_calculations.models import PoolConfig
+from database.models import Pool
 
 
-def load_config(path: Optional[str] = None) -> PoolConfig:
+def load_config(path: Optional[str] = None) -> Pool:
     if path is None:
         path = Path(__file__).parent.parent / "config.toml"
     with open(path, "rb") as f:
@@ -17,7 +17,7 @@ def load_config(path: Optional[str] = None) -> PoolConfig:
     pool = data["pool"]
     targets = data["targets"]
 
-    return PoolConfig(
+    return Pool(
         name=pool["name"],
         volume_liter=pool["volume_liter"],
         pool_type=pool["pool_type"],
