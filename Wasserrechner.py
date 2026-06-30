@@ -170,25 +170,49 @@ with col_status:
     else:
         st.warning("⚡ Handlungsbedarf")
 
-# Plotly gauge
-gauge_fig = go.Figure()
-gauge_fig.add_trace(
-    go.Indicator(
-        mode="gauge+number",
-        value=lsi,
-        title={"text": "LSI – Live"},
-        gauge={
-            "axis": {"range": [-2, 2]},
-            "bar": {"color": "darkblue"},
-            "steps": [
-                {"range": [-2, -0.5], "color": "red"},
-                {"range": [-0.5, 0.5], "color": "green"},
-                {"range": [0.5, 2], "color": "orange"},
-            ],
-        },
+# Plotly gauges
+gauge1, gauge2 = st.columns(2)
+with gauge1:
+    lsi_fig = go.Figure()
+    lsi_fig.add_trace(
+        go.Indicator(
+            mode="gauge+number",
+            value=lsi,
+            title={"text": "LSI"},
+            gauge={
+                "axis": {"range": [-2, 2]},
+                "bar": {"color": "darkblue"},
+                "steps": [
+                    {"range": [-2, -0.5], "color": "red"},
+                    {"range": [-0.5, 0.5], "color": "green"},
+                    {"range": [0.5, 2], "color": "orange"},
+                ],
+            },
+        )
     )
-)
-st.plotly_chart(gauge_fig, use_container_width=True)
+    lsi_fig.update_layout(height=200, margin=dict(l=20, r=20, t=40, b=20))
+    st.plotly_chart(lsi_fig, use_container_width=True)
+
+with gauge2:
+    rsi_fig = go.Figure()
+    rsi_fig.add_trace(
+        go.Indicator(
+            mode="gauge+number",
+            value=rsi,
+            title={"text": "RSI"},
+            gauge={
+                "axis": {"range": [3, 11]},
+                "bar": {"color": "darkblue"},
+                "steps": [
+                    {"range": [3, 6], "color": "orange"},
+                    {"range": [6, 7], "color": "green"},
+                    {"range": [7, 11], "color": "red"},
+                ],
+            },
+        )
+    )
+    rsi_fig.update_layout(height=200, margin=dict(l=20, r=20, t=40, b=20))
+    st.plotly_chart(rsi_fig, use_container_width=True)
 
 with st.expander("ℹ️ Was bedeuten LSI und RSI?"):
     st.markdown("""
