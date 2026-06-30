@@ -5,3 +5,4 @@ data/photos/
 .DS_Store
 *.egg-info/
 .pytest_cache/
+.venv/
