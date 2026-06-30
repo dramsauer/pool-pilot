@@ -1,0 +1,31 @@
+[pool]
+name = "Lay-Z-Spa Ibiza"
+volume_liter = 1000
+pool_type = "chlorine"
+
+[targets]
+ph_min = 7.2
+ph_max = 7.6
+chlorine_min = 0.5
+chlorine_max = 3.0
+alkalinity_min = 80
+alkalinity_max = 120
+hardness_min = 150
+hardness_max = 250
+temperature_default = 35
+
+[products]
+  [products.ph_minus]
+  name = "Summer Fun pH-Minus Granulat"
+  factor = 1.4
+  unit = "g"
+
+  [products.ph_plus]
+  name = "Summer Fun pH-Plus Granulat"
+  factor = 0.74
+  unit = "g"
+
+  [products.chlorine_tabs]
+  name = "Summer Fun Perfect Care Tabs 20g"
+  active_chlorine_per_tab = 18.0
+  unit = "Tabletten"
