@@ -89,4 +89,5 @@ class MaintenanceTask(Base):
     follow_up_days = Column(Integer, default=0)
     completed = Column(Boolean, default=False)
     completed_at = Column(DateTime, nullable=True)
+    executed_at = Column(DateTime, nullable=True)
     executed_notes = Column(Text, nullable=True)
