@@ -11,13 +11,19 @@
         "ms-toolsai.jupyter",
         "charliermarsh.ruff",
         "mjethwa-streamlit.streamlit-preview"
-      ]
+      ],
+      "settings": {
+        "streamlitPreview.autoStart": true,
+        "streamlitPreview.port": 8501,
+        "streamlitPreview.openInSidePanel": true
+      }
     }
   },
   "forwardPorts": [8501],
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
   "postCreateCommand": "sudo chown -R vscode:vscode /app",
+  "postStartCommand": "code Wasserrechner.py",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/common-utils:2": {
