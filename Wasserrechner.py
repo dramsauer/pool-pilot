@@ -106,6 +106,11 @@ with col1:
     )
 
 with col2:
+    advanced = st.checkbox(
+        "🔬 Erweiterte Werte",
+        value=False,
+        help="Alkalinität & Calciumhärte manuell eingeben",
+    )
     alkalinity = st.slider(
         "Alkalinität (mg/L CaCO₃) ⓘ",
         0,
@@ -113,6 +118,7 @@ with col2:
         int(tw_defaults["alkalinity"]),
         10,
         help=help_texts["alk"],
+        disabled=not advanced,
     )
     hardness = st.slider(
         "Calciumhärte (mg/L CaCO₃) ⓘ",
@@ -121,10 +127,49 @@ with col2:
         int(tw_defaults["hardness"]),
         10,
         help=help_texts["hard"],
+        disabled=not advanced,
     )
-    notes = st.text_input(
-        "📝 Notizen (optional)", placeholder="z. B. Wetter, Wasserstand..."
+
+notes = st.text_input(
+    "📝 Notizen (optional)", placeholder="z. B. Wetter, Wasserstand..."
+)
+
+st.markdown("#### 📸 Foto")
+photo_source = st.radio(
+    "Foto-Quelle",
+    ["📁 Hochladen", "📸 Kamera"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
+uploaded_file = None
+camera_file = None
+if photo_source == "📸 Kamera":
+    camera_file = st.camera_input("📸 Mit Kamera aufnehmen")
+else:
+    uploaded_file = st.file_uploader(
+        "📁 Vom Gerät hochladen", type=["jpg", "jpeg", "png"]
     )
+
+photo_path = None
+photo_data = None
+if camera_file:
+    photo_data = camera_file.getvalue()
+    img = Image.open(io.BytesIO(photo_data))
+    photo_dir = os.path.join(os.path.dirname(__file__), "data", "photos")
+    os.makedirs(photo_dir, exist_ok=True)
+    fname = f"reading_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+    photo_path = os.path.join(photo_dir, fname)
+    img.save(photo_path)
+    st.image(photo_data, caption="Kamera-Aufnahme", width=300)
+elif uploaded_file:
+    photo_data = uploaded_file.getvalue()
+    img = Image.open(uploaded_file)
+    photo_dir = os.path.join(os.path.dirname(__file__), "data", "photos")
+    os.makedirs(photo_dir, exist_ok=True)
+    fname = f"reading_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+    photo_path = os.path.join(photo_dir, fname)
+    img.save(photo_path)
+    st.image(photo_data, caption="Hochgeladenes Foto", width=300)
 
 # Live calculation
 lsi = calculate_lsi(ph, temperature, hardness, alkalinity)
@@ -335,46 +380,6 @@ if dosing:
                 st.rerun()
 else:
     st.success("✅ Keine Dosierung erforderlich — alle Werte im Zielbereich.")
-
-st.divider()
-
-# Photo section
-st.subheader("📸 Foto")
-photo_source = st.radio(
-    "Foto-Quelle",
-    ["📁 Hochladen", "📸 Kamera"],
-    horizontal=True,
-    label_visibility="collapsed",
-)
-uploaded_file = None
-camera_file = None
-if photo_source == "📸 Kamera":
-    camera_file = st.camera_input("📸 Mit Kamera aufnehmen")
-else:
-    uploaded_file = st.file_uploader(
-        "📁 Vom Gerät hochladen", type=["jpg", "jpeg", "png"]
-    )
-
-photo_path = None
-photo_data = None
-if camera_file:
-    photo_data = camera_file.getvalue()
-    img = Image.open(io.BytesIO(photo_data))
-    photo_dir = os.path.join(os.path.dirname(__file__), "data", "photos")
-    os.makedirs(photo_dir, exist_ok=True)
-    fname = f"reading_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-    photo_path = os.path.join(photo_dir, fname)
-    img.save(photo_path)
-    st.image(photo_data, caption="Kamera-Aufnahme", width=300)
-elif uploaded_file:
-    photo_data = uploaded_file.getvalue()
-    img = Image.open(uploaded_file)
-    photo_dir = os.path.join(os.path.dirname(__file__), "data", "photos")
-    os.makedirs(photo_dir, exist_ok=True)
-    fname = f"reading_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-    photo_path = os.path.join(photo_dir, fname)
-    img.save(photo_path)
-    st.image(photo_data, caption="Hochgeladenes Foto", width=300)
 
 st.divider()
 
