@@ -4,7 +4,8 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
+from sqlalchemy import create_engine
 from database.db import get_engine, get_session
 from database.models import (
     Instrument, Trinkwasser, Product, TaskTemplate, PoolTaskDefault,
@@ -117,3 +118,165 @@ def analyze_zip(zip_bytes: bytes) -> AnalysisResult:
     except Exception as e:
         shutil.rmtree(tmp, ignore_errors=True)
         return AnalysisResult(valid=False, error=str(e), counts={}, photo_count=0)
+
+
+_FK_MAP = {
+    ("pool_task_defaults", "pools"): "pool_id",
+    ("pool_task_defaults", "task_templates"): "template_id",
+    ("readings", "pools"): "pool_id",
+    ("photos", "readings"): "reading_id",
+    ("maintenance_tasks", "pools"): "pool_id",
+    ("maintenance_tasks", "readings"): "reading_id",
+    ("maintenance_tasks", "products"): "product_id",
+}
+
+
+def _get_row_dict(row) -> dict:
+    return {c.name: getattr(row, c.name) for c in row.__table__.columns}
+
+
+def _remap_fk(row_dict: dict, id_maps: dict, category: str) -> dict:
+    deps = PARENT_DEPENDENCIES.get(category, [])
+    for dep in deps:
+        fk_col = _FK_MAP.get((category, dep), f"{dep.rstrip('s')}_id")
+        if fk_col in row_dict and row_dict[fk_col] is not None:
+            if dep in id_maps and row_dict[fk_col] in id_maps[dep]:
+                row_dict[fk_col] = id_maps[dep][row_dict[fk_col]]
+    return row_dict
+
+
+def _remap_merge_filters(filters: dict, id_maps: dict, category: str) -> dict:
+    deps = PARENT_DEPENDENCIES.get(category, [])
+    for dep in deps:
+        fk_col = _FK_MAP.get((category, dep), f"{dep.rstrip('s')}_id")
+        if fk_col in filters and filters[fk_col] is not None:
+            if dep in id_maps and filters[fk_col] in id_maps[dep]:
+                filters[fk_col] = id_maps[dep][filters[fk_col]]
+    return filters
+
+
+def execute_import(
+    current_session,
+    imported_db_path: str,
+    strategies: dict[str, str],
+    id_maps: Optional[dict[str, dict[int, int]]] = None,
+    photos_extract_dir: str = "",
+    data_photos_dir: str = "",
+) -> dict:
+    if id_maps is None:
+        id_maps = {}
+
+    imported_engine = create_engine(f"sqlite:///{imported_db_path}")
+    imported_session = get_session(imported_engine)
+
+    if "photos" not in strategies and PHOTO_AUTO_PARENT in strategies:
+        strategies["photos"] = strategies[PHOTO_AUTO_PARENT]
+
+    pool_strat = strategies.get("pools", "skip")
+    template_strat = strategies.get("task_templates", "skip")
+    if pool_strat != "skip" and template_strat != "skip":
+        strategies.setdefault("pool_task_defaults", "replace")
+
+    result = {}
+
+    for category in DEPENDENCY_ORDER:
+        strategy = strategies.get(category, "skip")
+        if strategy == "skip":
+            result[category] = {"status": "skipped", "count": 0, "action": "skipped"}
+            continue
+
+        model_cls = TABLE_CATEGORIES[category]["model"]
+        imported_records = list(imported_session.query(model_cls).all())
+
+        if strategy == "replace":
+            current_session.query(model_cls).delete()
+            current_session.flush()
+
+            count = 0
+            for rec in imported_records:
+                rd = _get_row_dict(rec)
+                imported_id = rd.pop("id")
+                rd.pop("created_at", None)
+                rd.pop("timestamp", None)
+                rd.pop("completed_at", None)
+                rd.pop("executed_at", None)
+                rd = _remap_fk(rd, id_maps, category)
+                new_obj = model_cls(**rd)
+                current_session.add(new_obj)
+                current_session.flush()
+                id_maps.setdefault(category, {})[imported_id] = new_obj.id
+                count += 1
+
+            current_session.commit()
+            result[category] = {"status": "ok", "count": count, "action": "replaced"}
+
+        elif strategy == "merge":
+            merge_keys = CATEGORY_MERGE_KEYS.get(category, ["name"])
+            count = 0
+            for rec in imported_records:
+                rd = _get_row_dict(rec)
+                imported_id = rd.pop("id")
+                rd.pop("created_at", None)
+                rd.pop("timestamp", None)
+                rd.pop("completed_at", None)
+                rd.pop("executed_at", None)
+                rd = _remap_fk(rd, id_maps, category)
+
+                filters = {}
+                for k in merge_keys:
+                    if k in rd and rd[k] is not None:
+                        filters[k] = rd[k]
+                filters = _remap_merge_filters(filters, id_maps, category)
+
+                existing = None
+                if filters:
+                    existing = current_session.query(model_cls).filter_by(**filters).first()
+
+                if existing is not None:
+                    id_maps.setdefault(category, {})[imported_id] = existing.id
+                else:
+                    new_obj = model_cls(**rd)
+                    current_session.add(new_obj)
+                    current_session.flush()
+                    id_maps.setdefault(category, {})[imported_id] = new_obj.id
+                    count += 1
+
+            current_session.commit()
+            result[category] = {"status": "ok", "count": count, "action": "merged"}
+
+    imported_session.close()
+
+    if strategies.get("photos", "skip") != "skip" and photos_extract_dir and data_photos_dir:
+        photos_result = _handle_photo_files(
+            photos_extract_dir, data_photos_dir,
+            strategy=strategies.get("photos", "merge"),
+        )
+        result["photo_files"] = photos_result
+
+    result["_id_maps"] = id_maps
+    return result
+
+
+def _handle_photo_files(src_dir: str, dst_dir: str, strategy: str) -> dict:
+    src = Path(src_dir) / "photos"
+    dst = Path(dst_dir)
+    dst.mkdir(parents=True, exist_ok=True)
+
+    if not src.exists():
+        return {"status": "skipped", "count": 0, "action": "no_photos_found"}
+
+    if strategy == "replace":
+        for f in dst.iterdir():
+            if f.is_file():
+                f.unlink()
+
+    count = 0
+    for f in sorted(src.iterdir()):
+        if f.is_file():
+            target = dst / f.name
+            if target.exists() and strategy == "merge":
+                continue
+            shutil.copy2(str(f), str(target))
+            count += 1
+
+    return {"status": "ok", "count": count, "action": strategy}

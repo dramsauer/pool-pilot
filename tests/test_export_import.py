@@ -3,8 +3,8 @@ import io
 import shutil
 from pathlib import Path
 from database.db import get_engine, get_session
-from database.models import Base, Pool, Product
-from utils.export_import import analyze_zip, AnalysisResult, create_export_zip
+from database.models import Base, Pool, Product, Reading
+from utils.export_import import analyze_zip, AnalysisResult, create_export_zip, execute_import
 
 
 def test_create_export_zip_contains_db_and_photos(tmp_path):
@@ -129,3 +129,166 @@ def test_analyze_zip_returns_counts(tmp_path):
     assert result.photo_count == 0
 
     shutil.rmtree(result.tmp_path, ignore_errors=True)
+
+
+def test_execute_import_replace_pools(tmp_path):
+    current_db = tmp_path / "current.db"
+    current_engine = get_engine(str(current_db))
+    Base.metadata.create_all(current_engine)
+    s = get_session(current_engine)
+    s.add(Pool(name="OldPool", volume_liter=500))
+    s.commit()
+    s.close()
+
+    imported_db = tmp_path / "imported.db"
+    imported_engine = get_engine(str(imported_db))
+    Base.metadata.create_all(imported_engine)
+    s = get_session(imported_engine)
+    s.add(Pool(name="NewPool", volume_liter=1000))
+    s.commit()
+    s.close()
+
+    current_sesh = get_session(current_engine)
+    result = execute_import(
+        current_session=current_sesh,
+        imported_db_path=str(imported_db),
+        strategies={"pools": "replace"},
+        id_maps={},
+    )
+    current_sesh.close()
+
+    assert result["pools"]["status"] == "ok"
+    assert result["pools"]["count"] == 1
+    assert result["pools"]["action"] == "replaced"
+
+    s = get_session(current_engine)
+    pools = s.query(Pool).all()
+    assert len(pools) == 1
+    assert pools[0].name == "NewPool"
+    s.close()
+
+
+def test_execute_import_merge_pools(tmp_path):
+    current_db = tmp_path / "current.db"
+    current_engine = get_engine(str(current_db))
+    Base.metadata.create_all(current_engine)
+    s = get_session(current_engine)
+    s.add(Pool(name="ExistingPool", volume_liter=500))
+    s.commit()
+    s.close()
+
+    imported_db = tmp_path / "imported.db"
+    imported_engine = get_engine(str(imported_db))
+    Base.metadata.create_all(imported_engine)
+    s = get_session(imported_engine)
+    s.add(Pool(name="ExistingPool", volume_liter=500))
+    s.add(Pool(name="NewPool", volume_liter=1000))
+    s.commit()
+    s.close()
+
+    current_sesh = get_session(current_engine)
+    result = execute_import(
+        current_session=current_sesh,
+        imported_db_path=str(imported_db),
+        strategies={"pools": "merge"},
+        id_maps={},
+    )
+    current_sesh.close()
+
+    assert result["pools"]["status"] == "ok"
+    assert result["pools"]["count"] == 1
+    assert result["pools"]["action"] == "merged"
+
+    s = get_session(current_engine)
+    pools = s.query(Pool).all()
+    assert len(pools) == 2
+    names = {p.name for p in pools}
+    assert names == {"ExistingPool", "NewPool"}
+    s.close()
+
+
+def test_execute_import_skip_pools(tmp_path):
+    current_db = tmp_path / "current.db"
+    current_engine = get_engine(str(current_db))
+    Base.metadata.create_all(current_engine)
+    s = get_session(current_engine)
+    s.add(Pool(name="ExistingPool", volume_liter=500))
+    s.commit()
+    s.close()
+
+    imported_db = tmp_path / "imported.db"
+    imported_engine = get_engine(str(imported_db))
+    Base.metadata.create_all(imported_engine)
+    s = get_session(imported_engine)
+    s.add(Pool(name="NewPool", volume_liter=1000))
+    s.commit()
+    s.close()
+
+    current_sesh = get_session(current_engine)
+    result = execute_import(
+        current_session=current_sesh,
+        imported_db_path=str(imported_db),
+        strategies={"pools": "skip"},
+        id_maps={},
+    )
+    current_sesh.close()
+
+    assert result["pools"]["status"] == "skipped"
+
+    s = get_session(current_engine)
+    pools = s.query(Pool).all()
+    assert len(pools) == 1
+    assert pools[0].name == "ExistingPool"
+    s.close()
+
+
+def test_execute_import_remaps_readings_fk(tmp_path):
+    from datetime import datetime
+
+    current_db = tmp_path / "current.db"
+    current_engine = get_engine(str(current_db))
+    Base.metadata.create_all(current_engine)
+    s = get_session(current_engine)
+    s.add(Pool(name="OldPool", volume_liter=500))
+    s.commit()
+    s.close()
+
+    imported_db = tmp_path / "imported.db"
+    imported_engine = get_engine(str(imported_db))
+    Base.metadata.create_all(imported_engine)
+    s = get_session(imported_engine)
+    p = Pool(name="NewPool", volume_liter=1000)
+    s.add(p)
+    s.flush()
+    s.add(Reading(
+        pool_id=p.id, timestamp=datetime(2026, 6, 1, 12, 0, 0),
+        ph=7.2, chlorine=1.0, alkalinity=100, hardness=200, temperature_c=30,
+    ))
+    s.commit()
+    s.close()
+
+    current_sesh = get_session(current_engine)
+
+    result_pools = execute_import(
+        current_session=current_sesh,
+        imported_db_path=str(imported_db),
+        strategies={"pools": "replace"},
+        id_maps={},
+    )
+
+    result_readings = execute_import(
+        current_session=current_sesh,
+        imported_db_path=str(imported_db),
+        strategies={"readings": "merge"},
+        id_maps=result_pools.get("_id_maps", {}),
+    )
+    current_sesh.close()
+
+    assert result_readings["readings"]["status"] == "ok"
+
+    s = get_session(current_engine)
+    readings = s.query(Reading).all()
+    assert len(readings) == 1
+    new_pool = s.query(Pool).first()
+    assert readings[0].pool_id == new_pool.id
+    s.close()
