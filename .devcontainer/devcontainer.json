@@ -9,7 +9,8 @@
         "ms-python.python",
         "ms-python.pylance",
         "ms-toolsai.jupyter",
-        "charliermarsh.ruff"
+        "charliermarsh.ruff",
+        "sst-dev.opencode"
       ],
       "settings": {}
     }
@@ -17,7 +18,14 @@
   "forwardPorts": [8501],
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
-  "postCreateCommand": "sudo chown -R vscode:vscode /app",
+  "mounts": [
+    "source=${localEnv:HOME}/.config/opencode,target=/home/vscode/.config/opencode,type=bind",
+    "source=${localEnv:HOME}/.opencode,target=/home/vscode/.opencode,type=bind",
+    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind",
+    "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind",
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind"
+  ],
+  "postCreateCommand": "sudo chown -R vscode:vscode /app && npm install -g opencode-ai@latest && (cd /home/vscode/.config/opencode && npm install 2>/dev/null || true) && (cd /home/vscode/.opencode && npm install 2>/dev/null || true)",
   "postStartCommand": "nohup streamlit run Wasserrechner.py --server.headless=true --server.port=8501 > /tmp/streamlit.log 2>&1 & sleep 2 && echo '🌐 PoolPilot: http://localhost:8501 → Im VS Code: Cmd+Shift+P → Simple Browser: Show'",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
@@ -25,6 +33,9 @@
       "installZsh": true,
       "upgradePackages": false,
       "username": "vscode"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
     }
   }
 }
