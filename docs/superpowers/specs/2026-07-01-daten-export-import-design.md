@@ -1,168 +1,168 @@
-# Daten-Export / -Import
+# Data Export / Import
 
-Export aller Daten als `.zip` (pool.db + Fotos) mit der Möglichkeit, aus einem Backup-ZIP zu importieren — mit wahlweisem Merge pro Kategorie.
+Export all data as `.zip` (pool.db + photos) and import from a backup ZIP with per-category merge options.
 
 ## Motivation
 
-- Datensicherung / Backup
-- Migration zwischen Instanzen (lokal ↔ Docker)
-- Wiederherstellung nach Datenverlust
-- Teilweises Zusammenführen von Datensätzen aus verschiedenen Quellen
+- Backup / data safety
+- Migration between instances (local ↔ Docker)
+- Recovery after data loss
+- Partial merging of datasets from different sources
 
-## Ort & Navigation
+## Location & Navigation
 
-- **Neue Seite:** `pages/09_Datenverwaltung.py`
-- **Navigation:** In `Wasserrechner.py` Sidebar ein `st.sidebar.expander("Weitere")` mit `st.page_link("pages/09_Datenverwaltung.py", label="🔐 Daten-Export/-Import")`
-- Die Auto-Navigation von Streamlit listet die Seite am Ende (hohe Nummer = weniger prominent)
+- **New page:** `pages/09_Datenverwaltung.py`
+- **Navigation:** In `Wasserrechner.py` sidebar: `st.sidebar.expander("Weitere")` → `st.page_link("pages/09_Datenverwaltung.py", label="🔐 Daten-Export/-Import")`
+- Streamlit's auto-nav also lists the page at the bottom (high number = less prominent)
 
 ## Export
 
-Der Export erstellt ein ZIP-Archiv des gesamten `data/`-Verzeichnisses.
+Creates a ZIP archive of the entire `data/` directory.
 
-**Technik:**
-- `zipfile.ZipFile` schreibt `pool.db` + alle Dateien aus `photos/` in einen `io.BytesIO`
+**Implementation:**
+- `zipfile.ZipFile` writes `pool.db` + all files from `photos/` into `io.BytesIO`
 - `st.download_button(data=bytes_io.getvalue(), file_name=..., mime="application/zip")`
-- Dateiname: `poolpilot-backup-YYYY-MM-DD.zip`
+- Filename: `poolpilot-backup-YYYY-MM-DD.zip`
 
 **UI:**
 ```
-┌─ Daten exportieren ────────────────────────┐
-│                                             │
-│  📦 [ Vollständiges Backup herunterladen ]  │
-│    pool.db + alle Fotos im ZIP              │
-│                                             │
-└─────────────────────────────────────────────┘
+┌─ Export ───────────────────────────────┐
+│                                         │
+│  📦 [ Download full backup (ZIP) ]     │
+│    pool.db + all photos                 │
+│                                         │
+└─────────────────────────────────────────┘
 ```
 
 ## Import
 
 ### User Flow
 
-1. **ZIP-Upload** — `st.file_uploader` akzeptiert `.zip`
-2. **Analyse** — ZIP wird inspiziert:
-   - Existiert `pool.db`? (validierung)
-   - Wenn nein: Fehler, kein Import möglich
-   - Wenn ja: Importierte DB öffnen (separater SQLAlchemy Engine, read-only), Tabellen-Counts ermitteln
-   - Vergleich mit aktueller DB (Anzahl pro Kategorie)
-3. **Kategorie-Auswahl** — Pro Kategorie wählt der User:
-   - **Ersetzen** — aktuelle Einträge löschen, importierte einfügen
-   - **Zusammenführen** — per Key abgleichen, Duplikate überspringen, neue hinzufügen
-   - **Überspringen** — Kategorie ignorieren
-4. **Ausführen** — Bestätigungsdialog → Merge-Execution
-5. **Ergebnis** — Zusammenfassung pro Kategorie
+1. **ZIP upload** — `st.file_uploader` accepts `.zip`
+2. **Analysis** — ZIP is inspected:
+   - Does `pool.db` exist? (validation)
+   - If not: error, no import possible
+   - If yes: open imported DB (separate SQLAlchemy engine, read-only), get record counts per table
+   - Compare with current DB (counts per category)
+3. **Category selection** — Per category, user chooses:
+   - **Replace** — delete current records, insert imported ones
+   - **Merge** — match by key, skip duplicates, add new ones
+   - **Skip** — ignore this category
+4. **Execute** — Confirmation dialog → merge execution
+5. **Result** — Summary per category
 
-### Kategorien & Merge-Keys
+### Categories & Merge Keys
 
-| Kategorie | Beschreibung | Merge-Key |
+| Category | Description | Merge Key |
 |---|---|---|
-| Pools | Pool-Konfigurationen | `name` |
-| Produkte | Chemikalien | `name` |
-| Instrumente | Messgeräte | `name` |
-| Trinkwasser-Quellen | Leitungswasser-Analysen | `name` |
-| Aufgaben-Vorlagen | TaskTemplates | `title` |
-| Messwerte | Readings + zugehörige Photos | `timestamp` + `pool_id` |
-| Aufgaben | MaintenanceTasks | `title` + `due_date` |
+| Pools | Pool configurations | `name` |
+| Products | Chemicals | `name` |
+| Instruments | Measurement devices | `name` |
+| Tap Water Sources | Drinking water analyses | `name` |
+| Task Templates | Recurring task templates | `title` |
+| Measurements | Readings + associated Photos | `timestamp` + `pool_id` |
+| Tasks | MaintenanceTasks | `title` + `due_date` |
 
-### Merge-Modi im Detail
+### Merge Modes
 
-**Ersetzen:**
-- Alle aktuellen Records der Kategorie löschen (CASCADE via ORM)
-- Alle importierten Records einfügen → neue IDs
+**Replace:**
+- Delete all current records of the category (CASCADE via ORM)
+- Insert all imported records → new IDs
 
-**Zusammenführen:**
-- Pro importierten Record: anhand des Merge-Keys in aktueller DB suchen
-- Treffer → bestehenden Record behalten, ID-Mapping vormerken
-- Kein Treffer → neuen Record einfügen, ID-Mapping vormerken
+**Merge:**
+- For each imported record: lookup by merge key in current DB
+- Found → keep existing, record ID mapping
+- Not found → insert new, record ID mapping
 
-**Überspringen:**
-- Keine Änderungen an dieser Kategorie
-- ID-Mapping wird nicht aufgebaut → abhängige Kategorien können nicht importieren
+**Skip:**
+- No changes to this category
+- No ID mapping built → dependent categories can't import
 
-### Abhängigkeits-Reihenfolge & ID-Remapping
+### Dependency Order & ID Remapping
 
-Die Ausführung erfolgt strikt nach FK-Abhängigkeiten. Für jede Kategorie wird ein ID-Mapping aufgebaut: `id_map[kategorie][importierte_id] = aktuelle_id`.
+Execution follows FK dependency order. An ID mapping is built per category: `id_map[category][imported_id] = current_id`.
 
 ```
-1. Instruments        (keine FK-Abhängigkeiten)
-2. Trinkwasser        (keine FK-Abhängigkeiten)
-3. Products           (keine FK-Abhängigkeiten)
-4. TaskTemplates      (keine FK-Abhängigkeiten)
-5. Pools              (keine FK-Abhängigkeiten)
+1. Instruments        (no FK dependencies)
+2. Tap Water Sources  (no FK dependencies)
+3. Products           (no FK dependencies)
+4. Task Templates     (no FK dependencies)
+5. Pools              (no FK dependencies)
    ↓
-6. PoolTaskDefaults   (FK: pools, task_templates) — automatisch
+6. PoolTaskDefaults   (FK: pools, task_templates) — automatic
    ↓
 7. Readings           (FK: pools → id_map["pools"])
    ↓
-8. Photos             (FK: readings → id_map["readings"] + Dateien kopieren)
+8. Photos             (FK: readings → id_map["readings"] + copy files)
    ↓
 9. MaintenanceTasks   (FK: pools, readings, products → id_map)
 ```
 
-**Warnhinweis:** Wenn eine Eltern-Kategorie auf "Überspringen" gesetzt ist und eine Kind-Kategorie nicht, wird vor dem Import eine Warnung angezeigt.
+**Warning:** If a parent category is set to "Skip" and a child category is not, a warning is shown before execution.
 
-### Fotos
+### Photos
 
-- **Ersetzen:** Alte Dateien in `data/photos/` + DB-Einträge löschen → importierte Dateien kopieren + DB-Einträge anlegen
-- **Zusammenführen:** Nach `reading_id` + Dateinamen abgleichen, neue hinzufügen
-- **Überspringen:** Keine Änderung
+- **Replace:** Delete old files in `data/photos/` + DB records → copy imported files + insert DB records
+- **Merge:** Match by `reading_id` + filename, add new ones
+- **Skip:** No changes
 
-### Transaktionsverhalten
+### Transaction Behavior
 
-Pro Kategorie einzeln transaktional — bei Fehler in einer Kategorie wird nur diese zurückgerollt, andere laufen weiter. Der User sieht eine detaillierte Ergebnisübersicht.
+Each category runs in its own transaction — if one category fails, only that category is rolled back, others continue. The user sees a detailed result summary.
 
-## UI-Layout
+## UI Layout
 
 ```
 ╔══════════════════════════════════════════════════╗
-║  Daten-Export / -Import                          ║
+║  Data Export / Import                            ║
 ║                                                  ║
 ║  ─── Export ─────────────────────────────────    ║
-║  [Vollständiges Backup herunterladen]            ║
+║  [Download full backup]                          ║
 ║                                                  ║
 ║  ─── Import ─────────────────────────────────    ║
-║  [⬆ ZIP-Datei auswählen]   [Analysieren]        ║
+║  [⬆ Upload ZIP]  [Analyze]                      ║
 ║                                                  ║
-║  ZIP-Inhalt: 3 Pools, 15 Produkte, ... 0 Fotos  ║
+║  ZIP contents: 3 pools, 15 products, 0 photos   ║
 ║                                                  ║
-║  Kategorie          Aktuell  Import  Aktion       ║
+║  Category           Current  Import  Action       ║
 ║  ─────────────────  ───────  ──────  ───────     ║
-║  Pools                  2        3  [Zusammenf. ▼]║
-║  Produkte              10        8  [Ersetzen  ▼] ║
+║  Pools                   2       3  [Merge ▼]    ║
+║  Products               10       8  [Replace ▼]  ║
 ║  ...                                            ║
 ║                                                  ║
-║  ⚠ Hinweis: "Messwerte" erfordert "Pools"-Import ║
+║  ⚠ Warning: "Measurements" requires "Pools"     ║
 ║                                                  ║
-║  [🚀 Import durchführen]                         ║
+║  [🚀 Run Import]                                 ║
 ║                                                  ║
-║  ─── Ergebnis ──────────────────────────         ║
-║  ✅ Pools: 1 neu, 2 aktualisiert                 ║
-║  ✅ Produkte: 8 ersetzt                          ║
+║  ─── Result ──────────────────────────           ║
+║  ✅ Pools: 1 new, 2 kept                         ║
+║  ✅ Products: 8 replaced                         ║
 ║  ...                                             ║
 ╚══════════════════════════════════════════════════╝
 ```
 
-## Neue & geänderte Dateien
+## Files Changed
 
-| Datei | Änderung |
+| File | Change |
 |---|---|
-| `pages/09_Datenverwaltung.py` | **NEU** — Streamlit-UI für Export/Import |
-| `utils/export_import.py` | **NEU** — Kernlogik (ZIP, Analyse, Merge) |
-| `Wasserrechner.py` | **ÄNDERN** — Sidebar-Link "Weitere" hinzufügen |
-| `tests/test_export_import.py` | **NEU** — Tests |
+| `pages/09_Datenverwaltung.py` | **NEW** — Streamlit UI for export/import |
+| `utils/export_import.py` | **NEW** — Core logic (ZIP, analysis, merge) |
+| `Wasserrechner.py` | **MODIFY** — Add sidebar link under "Weitere" |
+| `tests/test_export_import.py` | **NEW** — Tests |
 
 ## Tests
 
-- Export erzeugt gültiges ZIP mit korrektem Inhalt
-- Import eines Exports → Roundtrip (Daten identisch)
-- Merge-Modi: Replace / Merge / Skip
-- ID-Remapping bei FK-Abhängigkeiten
-- Fehlerfälle: kaputtes ZIP, fehlende `pool.db`, leere DB
-- Teilweiser Import (eine Kategorie schlägt fehl, andere laufen durch)
+- Export produces valid ZIP with correct contents
+- Import of an export → roundtrip (data identical)
+- Merge modes: Replace / Merge / Skip
+- ID remapping with FK dependencies
+- Error cases: corrupt ZIP, missing `pool.db`, empty DB
+- Partial import (one category fails, others continue)
 
-## Fehlerbehandlung & Edge Cases
+## Error Handling & Edge Cases
 
-- **Ungültiges ZIP:** Fehlermeldung, kein Import
-- **Schema-Version abweichend:** Warnhinweis (prüfbar via `_db_version` oder Tabellen-Struktur)
-- **Dateikonflikte bei Fotos:** Bei Namensgleichheit automatischen Suffix anhängen
-- **Große Uploads:** Kein hartes Limit (Streamlit-eigene Grenzen beachten)
-- **DB-Verbindungsfehler:** Rollback pro Kategorie, klare Fehlermeldung
+- **Invalid ZIP:** Error message, no import
+- **Schema version mismatch:** Warning (check via `_db_version` or table structure)
+- **Photo file conflicts:** Auto-append suffix on name collision
+- **Large uploads:** No hard limit (respect Streamlit's built-in limits)
+- **DB connection error:** Rollback per category, clear error message
