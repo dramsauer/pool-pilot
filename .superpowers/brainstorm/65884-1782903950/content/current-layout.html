@@ -1,0 +1,66 @@
+<h2>🌡️ "Separate Messung" — Current Layout</h2>
+<p class="subtitle">Both sliders are 280px tall, 2-column layout. The visual height bar sits to the right of the water slider in a 3:1 split.</p>
+
+<div class="mockup" style="max-width:500px;margin:0 auto">
+  <div class="mockup-header">Current Zustand</div>
+  <div class="mockup-body" style="padding:16px">
+    <div style="display:flex;gap:16px">
+      <div style="flex:1;text-align:center">
+        <div style="font-weight:600;margin-bottom:8px">Temp °C</div>
+        <div style="width:40px;height:280px;background:#e0e0e0;border-radius:8px;margin:0 auto;position:relative">
+          <div style="position:absolute;bottom:33%;width:100%;height:24px;background:dodgerblue;border-radius:4px"></div>
+        </div>
+        <div style="margin-top:4px;font-size:12px">15°C</div>
+      </div>
+      <div style="flex:1;text-align:center">
+        <div style="font-weight:600;margin-bottom:8px">Wasserstand</div>
+        <div style="display:flex;gap:4px;justify-content:center">
+          <div style="width:40px;height:280px;background:#e0e0e0;border-radius:8px;position:relative">
+            <div style="position:absolute;bottom:50%;width:100%;height:24px;background:mediumseagreen;border-radius:4px"></div>
+          </div>
+          <div style="width:24px;height:280px;position:relative">
+            <div style="position:absolute;bottom:20%;width:100%;height:60%;background:#81c784;border-radius:6px"></div>
+            <div style="position:absolute;bottom:50%;width:100%;height:4px;background:#1a1a1a;border-radius:2px"></div>
+          </div>
+          <div style="font-size:11px;text-align:left;line-height:1.4">
+            <div>▲ 150</div>
+            <div>Max 100</div>
+            <div>Min 40</div>
+            <div>▼ 0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>What's the priority?</h3>
+  <p class="subtitle">I have a few ideas. First, let me ask about your goals:</p>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="compact" onclick="toggleSelect(this)">
+    <div class="letter">1</div>
+    <div class="content">
+      <h3>Just the water level area</h3>
+      <p>Only redesign the water level slider + visual bar integration. Keep temperature as-is.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="both" onclick="toggleSelect(this)">
+    <div class="letter">2</div>
+    <div class="content">
+      <h3>Both sliders</h3>
+      <p>Redesign the whole "Separate Messung" section — temperature AND water level.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="dontknow" onclick="toggleSelect(this)">
+    <div class="letter">3</div>
+    <div class="content">
+      <h3>Show me some options</h3>
+      <p>I'll decide once I see what's possible.</p>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:16px;color:#888;font-size:13px">Open at <strong>http://localhost:51648</strong> — click an option above, then tell me in the terminal.</p>

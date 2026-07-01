@@ -1,0 +1,71 @@
+<h2>🌊 Option A — Detailed Design</h2>
+<p class="subtitle">Compact side-by-side: slider + bar touching, 180px height</p>
+
+<div class="section">
+  <h3>Layout Structure</h3>
+  <div style="background:#f8f8f8;border-radius:8px;padding:16px;font-size:13px;font-family:monospace;line-height:1.6">
+    col_water<br>
+    └── <strong>.water-level-wrapper</strong> (flex, align-items: stretch)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;├── vertical_slider (height=180, key="water_vertical")<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;└── <strong>.bar-group</strong> (flex, gap: 4px)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── .green-zone-bar (18px wide, round corners)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;├── green zone (min → max)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;└── black level line<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── .labels (11px, right-aligned)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── ▲ hi<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── Max 100cm<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── Min 40cm<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── ▼ 0
+  </div>
+</div>
+
+<div class="section">
+  <h3>Mockup</h3>
+  <div style="display:flex;gap:4px;justify-content:center;align-items:stretch;height:180px;margin:16px 0">
+    <div style="width:50px;background:#e0e0e0;border-radius:8px;position:relative;flex-shrink:0">
+      <div style="position:absolute;bottom:50%;width:100%;height:18px;background:mediumseagreen;border-radius:4px"></div>
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;font-weight:600;color:#333">75</div>
+    </div>
+    <div style="width:18px;background:#e0e0e0;border-radius:4px;position:relative;flex-shrink:0">
+      <div style="position:absolute;bottom:20%;width:100%;height:60%;background:#81c784;border-radius:3px"></div>
+      <div style="position:absolute;bottom:50%;width:100%;height:3px;background:#1a1a1a;border-radius:2px"></div>
+    </div>
+    <div style="font-size:11px;line-height:1.3;font-weight:500;color:#333">
+      <div>▲ 150</div>
+      <div>Max 100</div>
+      <div style="margin-top:50px">Min 40</div>
+      <div>▼ 0</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Key Decisions</h3>
+  <div style="background:#f8f8f8;border-radius:8px;padding:16px;font-size:13px">
+    <p>✅ <strong>Height:</strong> 180px (from 280px, saves ~100px)</p>
+    <p>✅ <strong>Slider + bar touching</strong> via negative margin on the iframe container to kill default padding</p>
+    <p>✅ <strong>bar_group</strong> rendered after the slider in the same column (no nested columns)</p>
+    <p>✅ <strong>Green zone bar</strong> positioned using percentage of <code>hi</code></p>
+    <p>✅ <strong>Labels</strong> use <code>position: absolute</code> to align with min/max positions</p>
+    <p>✅ <strong>Volume display</strong> stays below as caption</p>
+    <p>✅ <strong>Temperature slider</strong> unchanged (still 280px)</p>
+  </div>
+</div>
+
+<div class="options" style="margin-top:16px">
+  <p class="subtitle">Does this design look right?</p>
+  <div class="option" data-choice="approve" onclick="toggleSelect(this)" style="cursor:pointer">
+    <div class="letter">✓</div>
+    <div class="content">
+      <h3>Looks good — build it</h3>
+    </div>
+  </div>
+  <div class="option" data-choice="changes" onclick="toggleSelect(this)" style="cursor:pointer">
+    <div class="letter">✗</div>
+    <div class="content">
+      <h3>I'd like some changes</h3>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:12px;color:#888;font-size:13px">🔗 http://localhost:51648</p>

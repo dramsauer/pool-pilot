@@ -4,10 +4,13 @@ import io
 import streamlit as st
 import plotly.graph_objects as go
 from PIL import Image
+
 from database.db import get_engine, init_db, get_session
 from database.repository import (
     get_pools,
     get_pool,
+    get_instruments,
+    get_instrument,
     get_products,
     save_reading_for_pool,
     save_task,
@@ -15,8 +18,33 @@ from database.repository import (
 )
 from pool_calculations.lsi import calculate_lsi, categorize_lsi
 from pool_calculations.rsi import calculate_rsi, categorize_rsi
+from pool_calculations.csi import calculate_csi, categorize_csi, calculate_ccpp
 from pool_calculations.dosing import recommend_dosing_from_db
 from pool_calculations.models import WaterTest
+
+
+def _target_gauge(value, title, axis_range, green_zone, unit=""):
+    """Create a Plotly gauge with green zone = target range."""
+    fig = go.Figure()
+    green_min, green_max = green_zone
+    steps = [
+        {"range": [axis_range[0], green_min], "color": "red"},
+        {"range": [green_min, green_max], "color": "mediumseagreen"},
+        {"range": [green_max, axis_range[1]], "color": "red"},
+    ]
+    fig.add_trace(go.Indicator(
+        mode="gauge+number",
+        value=value,
+        title={"text": f"{title} ({unit})" if unit else title},
+        gauge={
+            "axis": {"range": axis_range},
+            "bar": {"color": "darkblue"},
+            "steps": steps,
+        },
+    ))
+    fig.update_layout(height=230, margin=dict(l=20, r=20, t=60, b=20))
+    return fig
+
 
 st.set_page_config(
     page_title="PoolPilot - Dein intelligenter Pool-Helfer",
@@ -24,11 +52,21 @@ st.set_page_config(
     layout="centered",
 )
 
+st.markdown("""
+<style>
+button[data-baseweb="tab"] {
+    font-size: 1.2rem !important;
+    font-weight: 700 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 engine = get_engine()
 init_db(engine)
 session = get_session(engine)
 
-# Pool selector
+# Pool selector — sidebar
 pools = get_pools(session)
 if not pools:
     st.warning(
@@ -38,12 +76,15 @@ if not pools:
     st.stop()
 
 pool_options = {p.id: f"{p.name} ({p.volume_liter} L)" for p in pools}
-selected_pool_id = st.selectbox(
-    "Pool",
-    options=list(pool_options.keys()),
-    format_func=lambda x: pool_options[x],
-    key="pool_selector",
-)
+with st.sidebar:
+    st.header("🏊 Pool")
+    selected_pool_id = st.selectbox(
+        "Pool auswählen",
+        options=list(pool_options.keys()),
+        format_func=lambda x: pool_options[x],
+        key="pool_selector",
+        label_visibility="collapsed",
+    )
 pool = get_pool(session, selected_pool_id)
 
 # Load products for dosing
@@ -71,64 +112,167 @@ if "last_dosing" not in st.session_state:
     st.session_state.last_dosing = []
 if "task_created" not in st.session_state:
     st.session_state.task_created = False
+if "show_results" not in st.session_state:
+    st.session_state.show_results = False
 
 # Step 1: Measurement input with live calculation
-st.subheader("1️⃣ Messwerte erfassen")
+col_title, col_inst = st.columns([1, 1])
+with col_title:
+    st.markdown("### 1️⃣ Messwerte erfassen")
 
 help_texts = {
-    "ph": "Der pH-Wert beeinflusst Chlorwirkung und Wasserbalance. "
-    "Teststreifen messen von 6,2 bis 8,4. Ziel: 7,2–7,6.",
-    "chlorine": "Freies Chlor in mg/L. "
-    "Teststreifen messen freies Chlor. Ziel: 0,5–3,0 mg/L.",
-    "temp": "Wassertemperatur in °C. Beeinflusst LSI/RSI direkt.",
-    "alk": "Säurepufferkapazität (mg/L CaCO₃). "
-    "Verhindert pH-Schwankungen. Wird NICHT mit Teststreifen gemessen. "
+    "ph": "pH-Wert (Teststreifen 6,8–8,2). "
+    "Ziel: 7,2–7,6. Beeinflusst Chlorwirkung und Wasserbalance.",
+    "chlorine": "Freies Chlor in mg/L (Teststreifen 0,0–5,0). "
+    "Ziel: 0,5–3,0 mg/L.",
+    "temp": "Wassertemperatur in °C (separate Messung, z. B. Thermometer). "
+    "Beeinflusst CSI/LSI/RSI direkt.",
+    "alk": "Gesamtalkalinität (Teststreifen 0–240 mg/L CaCO₃). "
+    "Pufferkapazität gegen pH-Schwankungen. "
     "Trinkwasser-Default: {} mg/L".format(tw_defaults["alkalinity"]),
-    "hard": "Calcium-Ionen (mg/L CaCO₃, NICHT Gesamthärte). "
-    "Wichtig für LSI-Berechnung. Wird NICHT mit Teststreifen gemessen. "
+    "hard": "Gesamthärte (Teststreifen 0–1000 mg/L CaCO₃). "
+    "Wird als Calciumhärte für CSI/LSI genutzt. "
     "Trinkwasser-Default: {} mg/L".format(tw_defaults["hardness"]),
+    "cya": "Cyanursäure / Stabilisator (Teststreifen 0–150 mg/L). "
+    "Schützt Chlor vor UV-Abbau. Verfälscht Alkalinitätsmessung.",
+    "salt": "Salzgehalt / TDS (Teststreifen 0–8000 mg/L NaCl). "
+    "Relevant für CSI-Berechnung. Salzpool: ~3000–4000 mg/L.",
 }
 
+default_tds = 3000 if pool.pool_type == "salt" else 500
+
+# Instrument selector — placed beside the section title
+with col_inst:
+    all_instruments = get_instruments(session)
+    inst_options = {0: "Alle Parameter"} | {i.id: i.name for i in all_instruments}
+    default_inst_index = 0
+    if pool.instrument_id and pool.instrument_id in inst_options:
+        default_inst_index = list(inst_options.keys()).index(pool.instrument_id)
+
+    selected_inst_id = st.selectbox(
+        "Messinstrument",
+        options=list(inst_options.keys()),
+        format_func=lambda x: inst_options[x],
+        index=default_inst_index,
+        key="measurement_instrument",
+        label_visibility="collapsed",
+    )
+
+instrument = get_instrument(session, selected_inst_id) if selected_inst_id else None
+instrument_name = instrument.name if instrument else "Teststreifen (alle Parameter)"
+
+# Determine which params the instrument can measure (or all if no instrument)
+cap = {
+    "ph": True,
+    "chlorine": True,
+    "alkalinity": True,
+    "hardness": True,
+    "cya": True,
+    "salt": True,
+}
+if instrument:
+    cap = {
+        "ph": instrument.can_measure_ph,
+        "chlorine": instrument.can_measure_chlorine or instrument.can_measure_bromine,
+        "alkalinity": instrument.can_measure_alkalinity,
+        "hardness": instrument.can_measure_hardness,
+        "cya": instrument.can_measure_cya,
+        "salt": instrument.can_measure_salt,
+    }
+
+# Default slider values (fallback when a param is read-only)
+def_val = {
+    "ph": 7.4,
+    "chlorine": 1.5,
+    "alkalinity": tw_defaults["alkalinity"],
+    "hardness": tw_defaults["hardness"],
+    "cya": 0,
+    "salt": default_tds,
+}
+
+st.markdown(f"#### 🧪 {instrument_name}")
 col1, col2 = st.columns(2)
-
 with col1:
-    ph = st.slider("pH-Wert ⓘ", 6.2, 8.4, 7.4, 0.1, help=help_texts["ph"])
-    chlorine = st.slider(
-        "Chlor (mg/L) ⓘ", 0.0, 10.0, 1.5, 0.1, help=help_texts["chlorine"]
-    )
-    temperature = st.slider(
-        "Wassertemperatur (°C) ⓘ",
-        0,
-        45,
-        int(pool.temperature_default),
-        1,
-        help=help_texts["temp"],
-    )
+    if cap["ph"]:
+        ph = st.slider("pH-Wert", 6.8, 8.2, 7.4, 0.1, help=help_texts["ph"])
+    else:
+        ph = def_val["ph"]
+        st.metric("pH-Wert (aus Trinkwasser)", f"{ph:.1f}")
 
+    if cap["chlorine"]:
+        chlorine = st.slider("Freies Chlor (mg/L)", 0.0, 5.0, 1.5, 0.1, help=help_texts["chlorine"])
+    else:
+        chlorine = def_val["chlorine"]
+        st.metric("Freies Chlor (aus Trinkwasser)", f"{chlorine:.1f} mg/L")
+
+    if cap["alkalinity"]:
+        alkalinity = st.slider("Gesamtalkalinität (mg/L CaCO₃)", 0, 240, int(def_val["alkalinity"]), 5, help=help_texts["alk"])
+    else:
+        alkalinity = int(def_val["alkalinity"])
+        st.metric("Gesamtalkalinität (aus Trinkwasser)", f"{alkalinity} mg/L")
 with col2:
-    advanced = st.checkbox(
-        "🔬 Erweiterte Werte",
-        value=False,
-        help="Alkalinität & Calciumhärte manuell eingeben",
+    if cap["hardness"]:
+        hardness = st.slider("Gesamthärte (mg/L CaCO₃)", 0, 1000, int(def_val["hardness"]), 10, help=help_texts["hard"])
+    else:
+        hardness = int(def_val["hardness"])
+        st.metric("Gesamthärte (aus Trinkwasser)", f"{hardness} mg/L")
+
+    if cap["cya"]:
+        cya = st.slider("Cyanursäure / CYA (mg/L)", 0, 150, 0, 5, help=help_texts["cya"])
+    else:
+        cya = 0
+        st.metric("Cyanursäure / CYA (aus Trinkwasser)", f"{cya} mg/L")
+
+    if cap["salt"]:
+        tds = st.slider("Salzgehalt / TDS (mg/L NaCl)", 0, 8000, default_tds, 100, help=help_texts["salt"])
+    else:
+        tds = default_tds
+        st.metric("Salzgehalt / TDS (aus Trinkwasser)", f"{tds} mg/L NaCl")
+
+st.markdown("#### 🌡️ Separate Messung")
+col_temp, col_water = st.columns(2)
+with col_temp:
+    temperature = st.slider(
+        "Wassertemperatur (°C)",
+        0, 45, int(pool.temperature_default), 1,
+        key="temp_horizontal",
     )
-    alkalinity = st.slider(
-        "Alkalinität (mg/L CaCO₃) ⓘ",
-        0,
-        500,
-        int(tw_defaults["alkalinity"]),
-        10,
-        help=help_texts["alk"],
-        disabled=not advanced,
-    )
-    hardness = st.slider(
-        "Calciumhärte (mg/L CaCO₃) ⓘ",
-        0,
-        500,
-        int(tw_defaults["hardness"]),
-        10,
-        help=help_texts["hard"],
-        disabled=not advanced,
-    )
+with col_water:
+    if pool.max_fill_height_cm and pool.min_fill_height_cm and pool.max_fill_height_cm > pool.min_fill_height_cm:
+        lo = 0
+        hi = int(pool.max_fill_height_cm * 1.5)
+        min_cm = pool.min_fill_height_cm
+        max_cm = pool.max_fill_height_cm
+        water_level_cm = st.slider(
+            "Wasserstand (cm)",
+            lo, hi,
+            int(pool.min_fill_height_cm),
+            1,
+            format="%d cm",
+        )
+
+        pct = lambda v: v / hi * 100
+        st.markdown(f"""
+<div style="display:flex;align-items:center;gap:4px;margin:-14px 0 16px;font-size:11px;color:#555">
+    <span>▲ {hi}</span>
+    <div style="flex:1;height:8px;background:linear-gradient(to right,#e0e0e0 {pct(min_cm)}%,#81c784 {pct(min_cm)}%,#81c784 {pct(max_cm)}%,#e0e0e0 {pct(max_cm)}%);border-radius:4px;position:relative">
+        <div style="position:absolute;left:{pct(water_level_cm)}%;top:-2px;width:2px;height:12px;background:#333;border-radius:1px"></div>
+    </div>
+    <span>▼ 0</span>
+</div>
+""", unsafe_allow_html=True)
+        pool_shape = pool.shape or "rechteckig"
+        if pool_shape == "rechteckig" and pool.inner_length_cm and pool.inner_width_cm:
+            cur_area = pool.inner_length_cm * pool.inner_width_cm
+        elif pool_shape == "rund" and pool.inner_diameter_cm:
+            cur_area = 3.14159 * (pool.inner_diameter_cm / 2) ** 2
+        else:
+            cur_area = None
+        if cur_area:
+            cur_vol = cur_area * water_level_cm / 1000
+            st.caption(f"Volumen: **{cur_vol:,.0f} L**")
+    else:
+        st.info("Wasserstand: Min/Max in Pool-Einstellungen hinterlegen.")
 
 notes = st.text_input(
     "📝 Notizen (optional)", placeholder="z. B. Wetter, Wasserstand..."
@@ -172,10 +316,13 @@ elif uploaded_file:
     st.image(photo_data, caption="Hochgeladenes Foto", width=300)
 
 # Live calculation
-lsi = calculate_lsi(ph, temperature, hardness, alkalinity)
+lsi = calculate_lsi(ph, temperature, hardness, alkalinity, cya=cya, tds=tds)
 rsi = calculate_rsi(ph, temperature, hardness, alkalinity)
+csi = calculate_csi(ph, temperature, hardness, alkalinity, cya=cya, tds=tds)
+ccpp = calculate_ccpp(ph, temperature, hardness, alkalinity, cya=cya, tds=tds)
 lsi_cat = categorize_lsi(lsi)
 rsi_cat = categorize_rsi(rsi)
+csi_cat = categorize_csi(csi)
 
 test = WaterTest(
     ph=ph,
@@ -185,203 +332,6 @@ test = WaterTest(
     temperature_c=temperature,
 )
 dosing = recommend_dosing_from_db(test, pool, products)
-
-st.divider()
-
-# Step 2: Results display (auto-updated)
-st.subheader("2️⃣ Wasserbalance")
-
-col_lsi, col_rsi, col_status = st.columns(3)
-
-with col_lsi:
-    lsi_color = (
-        "green" if lsi_cat == "ausgeglichen"
-        else ("red" if lsi_cat in ("korrosiv", "kalkend") else "orange")
-    )
-    lsi_arrow = "✅" if lsi_cat == "ausgeglichen" else ("🔴" if lsi_cat == "korrosiv" else "🟠")
-    st.markdown(
-        f"### {lsi_arrow} LSI: <span style='color:{lsi_color}'>{lsi:+.2f}</span>",
-        unsafe_allow_html=True,
-    )
-
-with col_rsi:
-    rsi_color = (
-        "green" if rsi_cat == "ausgeglichen"
-        else ("red" if rsi_cat == "korrosiv" else "orange")
-    )
-    rsi_arrow = "✅" if rsi_cat == "ausgeglichen" else ("🔴" if rsi_cat == "korrosiv" else "🟠")
-    st.markdown(
-        f"### {rsi_arrow} RSI: <span style='color:{rsi_color}'>{rsi:.1f}</span>",
-        unsafe_allow_html=True,
-    )
-
-with col_status:
-    if lsi_cat == "ausgeglichen" and rsi_cat == "ausgeglichen":
-        st.success("✅ Wasser im Gleichgewicht")
-    else:
-        tips = []
-        if lsi_cat == "korrosiv":
-            tips.append("LSI korrosiv → pH anheben oder Härte/Alkalinität erhöhen")
-        if lsi_cat == "kalkausfällend":
-            tips.append("LSI kalkend → pH senken oder Härte/Alkalinität reduzieren")
-        if rsi_cat == "korrosiv":
-            tips.append("RSI korrosiv → pH anheben oder Härte/Alkalinität erhöhen")
-        if rsi_cat == "kalkend":
-            tips.append("RSI kalkend → pH senken oder Härte/Alkalinität reduzieren")
-        guidance = "\n\n".join(tips)
-        st.warning(f"⚡ Handlungsbedarf\n\n{guidance}")
-
-# Plotly gauges
-gauge1, gauge2 = st.columns(2)
-with gauge1:
-    lsi_fig = go.Figure()
-    lsi_fig.add_trace(
-        go.Indicator(
-            mode="gauge+number",
-            value=lsi,
-            title={"text": "LSI"},
-            gauge={
-                "axis": {"range": [-2, 2]},
-                "bar": {"color": "darkblue"},
-                "steps": [
-                    {"range": [-2, -0.5], "color": "red"},
-                    {"range": [-0.5, 0.5], "color": "green"},
-                    {"range": [0.5, 2], "color": "orange"},
-                ],
-            },
-        )
-    )
-    lsi_fig.update_layout(height=200, margin=dict(l=20, r=20, t=40, b=20))
-    st.plotly_chart(lsi_fig, use_container_width=True)
-
-with gauge2:
-    rsi_fig = go.Figure()
-    rsi_fig.add_trace(
-        go.Indicator(
-            mode="gauge+number",
-            value=rsi,
-            title={"text": "RSI"},
-            gauge={
-                "axis": {"range": [3, 11]},
-                "bar": {"color": "darkblue"},
-                "steps": [
-                    {"range": [3, 6], "color": "orange"},
-                    {"range": [6, 7], "color": "green"},
-                    {"range": [7, 11], "color": "red"},
-                ],
-            },
-        )
-    )
-    rsi_fig.update_layout(height=200, margin=dict(l=20, r=20, t=40, b=20))
-    st.plotly_chart(rsi_fig, use_container_width=True)
-
-with st.expander("ℹ️ Was bedeuten LSI und RSI?"):
-    st.markdown("""
-**LSI (Langelier Sättigungs-Index)** – sagt voraus, ob das Wasser Kalk ablagert oder löst.
-- **< -0,5 (korrosiv)**: Wasser löst Kalk — greift Beckenoberflächen und Rohre an.
-  → *Gegenmaßnahme:* pH anheben oder Calciumhärte/Alkalinität erhöhen.
-- **-0,5 bis +0,5 (ausgeglichen)**: Idealer Bereich — Wasser im Gleichgewicht.
-- **> +0,5 (kalkausfällend)**: Wasser neigt zu Kalkablagerungen — Beläge, trübes Wasser.
-  → *Gegenmaßnahme:* pH senken oder Calciumhärte/Alkalinität reduzieren.
-
-**RSI (Ryznar Stabilitäts-Index)** – praxistauglichere Weiterentwicklung des LSI.
-- **< 6,0 (kalkend)**: Hohe Kalkabscheidung. → *Gegenmaßnahme:* pH senken.
-- **6,0 – 7,0 (ausgeglichen)**: Optimal.
-- **> 7,0 (korrosiv)**: Korrosionsgefahr. → *Gegenmaßnahme:* pH anheben.
-
-**Faustregel:** Der LSI gibt die grobe Tendenz, der RSI ist präziser bei Korrosion. Sind sich beide uneinig, liegt ein Grenzfall vor — nachjustieren und in 2–3 Tagen neu messen.
-
-👉 [LSI Rechner & Erklärung (poolplanet.de)](https://www.poolplanet.de/ratgeber/lsi-rechner/)
-👉 [Wasserbalance im Pool (wasserfachmann.de)](https://www.wasserfachmann.de/wasserbalance/)
-👉 [Langelier Sättigungs-Index (Wikipedia)](https://de.wikipedia.org/wiki/Langelier-Index)
-    """)
-
-# pH / Chlor leiste
-ph_ok = pool.ph_min <= ph <= pool.ph_max
-chl_ok = pool.chlorine_min <= chlorine <= pool.chlorine_max
-col_a, col_b = st.columns(2)
-col_a.metric(
-    "pH",
-    f"{ph:.1f}",
-    delta="✅ i.O." if ph_ok else f"⚠️ Ziel {pool.ph_min}–{pool.ph_max}",
-)
-col_b.metric(
-    "Chlor",
-    f"{chlorine:.1f} mg/L",
-    delta="✅ i.O." if chl_ok else f"⚠️ Ziel {pool.chlorine_min}–{pool.chlorine_max}",
-)
-
-st.divider()
-
-# Step 3: Dosing recommendations
-st.subheader("3️⃣ Dosierempfehlung")
-
-if dosing:
-    for d in dosing:
-        with st.container(border=True):
-            col_a, col_b = st.columns([3, 1])
-            with col_a:
-                st.warning(f"**{d.product}**: {d.amount:g} {d.unit}")
-                st.caption(d.reason)
-            with col_b:
-                if st.button(
-                    "📋 Aufgabe",
-                    key=f"task_{d.product}_{d.amount}",
-                    use_container_width=True,
-                ):
-                    save_task(
-                        session,
-                        task_type="dosierung",
-                        title=f"{d.product}: {d.amount:g} {d.unit}",
-                        description=d.reason,
-                        due_date=datetime.date.today(),
-                        interval_days=0,
-                    )
-                    st.session_state.task_created = True
-                    st.rerun()
-
-        # Step 4: Execution documentation
-        st.caption("Ausführung dokumentieren:")
-        exec_col1, exec_col2 = st.columns([3, 1])
-        with exec_col1:
-            exec_notes = st.text_input(
-                "Was wurde gemacht?",
-                placeholder=f"z. B. {d.amount:g} {d.unit} zugegeben um ...",
-                key=f"exec_{d.product}",
-            )
-        with exec_col2:
-            if st.button(
-                "✅ Erledigt", key=f"done_{d.product}", use_container_width=True
-            ):
-                task_data = {
-                    "date": datetime.date.today().isoformat(),
-                    "time": datetime.datetime.now().strftime("%H:%M"),
-                    "action": exec_notes or f"{d.amount:g} {d.unit} zugegeben",
-                    "product": d.product,
-                    "amount": d.amount,
-                    "unit": d.unit,
-                    "reason": d.reason,
-                }
-                if "executed_actions" not in st.session_state:
-                    st.session_state.executed_actions = []
-                st.session_state.executed_actions.append(task_data)
-
-                if d.follow_up_days > 0:
-                    save_task(
-                        session,
-                        task_type="nachkontrolle",
-                        title=f"{d.product} – Nachkontrolle",
-                        description=f"Folgeaufgabe in {d.follow_up_days} Tagen "
-                        f"(automatisch erzeugt am {datetime.date.today().isoformat()})",
-                        due_date=datetime.date.today()
-                        + datetime.timedelta(days=d.follow_up_days),
-                        interval_days=d.follow_up_days,
-                    )
-                st.rerun()
-else:
-    st.success("✅ Keine Dosierung erforderlich — alle Werte im Zielbereich.")
-
-st.divider()
 
 # Save button
 if st.button("💾 Messung speichern", type="primary", use_container_width=True):
@@ -409,11 +359,12 @@ if st.button("💾 Messung speichern", type="primary", use_container_width=True)
         temperature_c=temperature,
         lsi=lsi,
         rsi=rsi,
+        csi=csi,
+        ccpp=ccpp,
         dosing=dosing_data,
         notes=notes,
     )
 
-    # Link photo if taken
     if photo_path:
         save_photo(
             session,
@@ -421,7 +372,6 @@ if st.button("💾 Messung speichern", type="primary", use_container_width=True)
             caption=f"Messung {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}",
         )
 
-    # Create tasks for dosing if not already done
     if not st.session_state.get("task_created"):
         for d in dosing:
             save_task(
@@ -431,11 +381,31 @@ if st.button("💾 Messung speichern", type="primary", use_container_width=True)
                 description=d.reason,
                 due_date=datetime.date.today(),
                 interval_days=0,
+                product_id=getattr(d, 'product_id', None),
+                product_name=d.product,
+                recommended_amount=d.amount,
+                recommended_unit=d.unit,
             )
 
     st.success("✅ Messung gespeichert!")
+    st.session_state.show_results = True
     st.session_state.last_dosing = dosing
     st.session_state.task_created = False
+    # Auto-create measurement follow-up task
+    pool_id = st.session_state.get("selected_pool_id")
+    if pool_id:
+        pool = get_pool(session, pool_id)
+        if pool and pool.auto_measurement_task_days > 0:
+            follow_up_date = datetime.date.today() + datetime.timedelta(days=pool.auto_measurement_task_days)
+            save_task(
+                session,
+                task_type="nachkontrolle",
+                title="Nachkontrolle (Messung)",
+                description=f"Automatisch erstellt nach Messung vom {datetime.date.today().isoformat()}",
+                due_date=follow_up_date,
+                interval_days=pool.auto_measurement_task_days,
+                pool_id=pool_id,
+            )
     if "executed_actions" in st.session_state:
         del st.session_state.executed_actions
 
@@ -453,3 +423,309 @@ if st.session_state.last_dosing:
                 for d in st.session_state.last_dosing
             ]
         )
+
+st.divider()
+
+def _cat_score(cat: str) -> float:
+    if cat in ("stark korrosiv",):
+        return -1.5
+    if cat in ("korrosiv",):
+        return -1.0
+    if cat == "ausgeglichen":
+        return 0.0
+    if cat in ("kalkend", "kalkausfällend"):
+        return 0.5
+    if cat in ("stark kalkend",):
+        return 1.5
+    return 0.0
+
+
+def _cat_arrow_color(cat: str):
+    if cat == "ausgeglichen":
+        return "✅", "green"
+    if "korrosiv" in cat:
+        return "🔴", "red"
+    return "🟠", "orange"
+
+
+def _driver_analysis(ph, hardness, alkalinity, csi_cat, pool):
+    """Identify the primary parameter driving imbalance."""
+    issues = []
+    if csi_cat in ("stark korrosiv", "korrosiv"):
+        if pool.ph_min <= ph <= pool.ph_max:
+            issues.append(("Calciumhärte oder Alkalinität erhöhen", "härtet/alk"))
+        else:
+            issues.append(("pH in Zielbereich bringen", "ph"))
+    elif csi_cat in ("stark kalkend", "kalkend"):
+        if ph > pool.ph_max:
+            issues.append(("pH senken", "ph"))
+        elif alkalinity > pool.alkalinity_max:
+            issues.append(("Alkalinität senken", "alk"))
+        elif hardness > pool.hardness_max:
+            issues.append(("Calciumhärte senken (Teilwasserwechsel)", "härte"))
+        else:
+            issues.append(("pH oder Alkalinität prüfen", "allg"))
+    return issues[0] if issues else ("", "")
+
+
+
+
+
+if st.session_state.show_results:
+    st.subheader("2️⃣ Schlussfolgerungen")
+    tab_dosis, tab_hygiene, tab_kalk = st.tabs(["💊 Dosierempfehlung", "🧼 Hygiene", "⚖️ Kalk-Korrosion"])
+
+    with tab_dosis:
+        ph_ok = pool.ph_min <= ph <= pool.ph_max
+        chl_ok = pool.chlorine_min <= chlorine <= pool.chlorine_max
+        alk_ok = pool.alkalinity_min <= alkalinity <= pool.alkalinity_max
+        hard_ok = pool.hardness_min <= hardness <= pool.hardness_max
+        consensus_score = 0.6 * _cat_score(csi_cat) + 0.2 * _cat_score(lsi_cat) + 0.2 * _cat_score(rsi_cat)
+        has_kalk_issue = consensus_score < -0.3 or consensus_score > 0.3
+        all_ok = ph_ok and chl_ok and alk_ok and hard_ok and not has_kalk_issue
+
+        if "done_list" not in st.session_state:
+            st.session_state.done_list = set()
+
+        _PRIORITY_LABELS = {1: "1. Alkalinität", 2: "2. pH", 3: "3. Härte", 4: "4. Chlor", 5: "5. Balance"}
+
+        if all_ok:
+            st.success("✅ Alles im grünen Bereich — keine Maßnahmen nötig.")
+        else:
+            issue_count = sum([not ph_ok, not chl_ok, not alk_ok, not hard_ok, has_kalk_issue])
+            worst = "kritisch" if consensus_score < -0.5 or consensus_score > 0.5 else "erhöht"
+            st.warning(f"⚡ **{issue_count} Handlungsfeld{'er' if issue_count > 1 else ''}** — Zustand {worst}")
+
+            order_steps = []
+            if not alk_ok:
+                order_steps.append("1️⃣ Alkalinität (Puffer für pH)")
+            if not ph_ok:
+                order_steps.append("2️⃣ pH-Wert")
+            if not hard_ok:
+                order_steps.append("3️⃣ Calciumhärte")
+            if has_kalk_issue:
+                direction = "korrosiv 🔴" if consensus_score < -0.3 else "kalkend 🟠"
+                order_steps.append(f"4️⃣ Kalk-Korrosion ({direction})")
+            if not chl_ok:
+                order_steps.append("5️⃣ Chlor (Desinfektion)")
+            st.caption(" | ".join(order_steps) if order_steps else "")
+
+            for d in dosing:
+                done_key = f"done_{d.product}"
+                is_done = done_key in st.session_state.done_list
+
+                with st.container(border=True):
+                    cols = st.columns([2, 1, 1])
+                    with cols[0]:
+                        badge = {1: "🔴", 2: "🟠", 3: "🟡", 4: "🔵", 5: "⚪"}.get(d.priority, "⚪")
+                        st.markdown(f"**{badge} {d.product}**")
+                        st.markdown(f"### {d.amount:g} {d.unit}")
+                        st.caption(d.reason)
+                        if d.instruction:
+                            st.markdown(f"📖 *{d.instruction}*")
+                        if d.wait_minutes > 0:
+                            st.caption(f"⏱ Nach Zugabe ~{d.wait_minutes} Min. warten, dann neu testen")
+                    with cols[1]:
+                        st.markdown(f"<br>", unsafe_allow_html=True)
+                        if st.button(
+                            "📋 Aufgabe", key=f"task_{d.product}",
+                            use_container_width=True,
+                        ):
+                            save_task(
+                                session,
+                                task_type="dosierung",
+                                title=f"{d.product}: {d.amount:g} {d.unit}",
+                                description=d.reason,
+                                due_date=datetime.date.today(),
+                                interval_days=0,
+                            )
+                            st.session_state.task_created = True
+                            st.rerun()
+                    with cols[2]:
+                        if is_done:
+                            st.success("✅ Erledigt")
+                        else:
+                            st.markdown(f"<br>", unsafe_allow_html=True)
+                            if st.button(
+                                "✅ Erledigt", key=f"done_{d.product}",
+                                use_container_width=True, type="primary",
+                            ):
+                                task_data = {
+                                    "date": datetime.date.today().isoformat(),
+                                    "time": datetime.datetime.now().strftime("%H:%M"),
+                                    "product": d.product,
+                                    "amount": d.amount,
+                                    "unit": d.unit,
+                                    "reason": d.reason,
+                                }
+                                if "executed_actions" not in st.session_state:
+                                    st.session_state.executed_actions = []
+                                st.session_state.executed_actions.append(task_data)
+                                st.session_state.done_list.add(done_key)
+                                if d.follow_up_days > 0:
+                                    save_task(
+                                        session,
+                                        task_type="nachkontrolle",
+                                        title=f"{d.product} – Nachkontrolle",
+                                        description=(
+                                            f"Folgeaufgabe in {d.follow_up_days} Tagen "
+                                            f"(auto. {datetime.date.today().isoformat()})"
+                                        ),
+                                        due_date=datetime.date.today()
+                                        + datetime.timedelta(days=d.follow_up_days),
+                                        interval_days=d.follow_up_days,
+                                        product_id=getattr(d, 'product_id', None),
+                                        product_name=d.product,
+                                        recommended_amount=d.amount,
+                                        recommended_unit=d.unit,
+                                    )
+                                st.rerun()
+
+                    if is_done:
+                        with st.expander("📝 Details zur Ausführung", expanded=False):
+                            st.text_input(
+                                "Was genau wurde gemacht?",
+                                placeholder=f"z. B. {d.amount:g} {d.unit} in Wasser gelöst und zugegeben",
+                                key=f"exec_note_{d.product}",
+                            )
+
+        all_done = all(
+            f"done_{d.product}" in st.session_state.done_list
+            for d in dosing
+        ) if dosing else True
+
+        if dosing and all_done and not all_ok:
+            st.success("🎯 Alle Maßnahmen als erledigt markiert! Nach Einwirkzeit neu testen.")
+
+    with tab_hygiene:
+        col_ph_gauge, col_chlor_gauge = st.columns(2)
+        with col_ph_gauge:
+            ph_fig = _target_gauge(ph, "pH", [6.2, 8.4], [pool.ph_min, pool.ph_max])
+            st.plotly_chart(ph_fig, use_container_width=True)
+            ph_ok = pool.ph_min <= ph <= pool.ph_max
+            st.metric("pH", f"{ph:.1f}", delta="✅ i.O." if ph_ok else f"⚠️ Ziel {pool.ph_min}–{pool.ph_max}")
+        with col_chlor_gauge:
+            chl_fig = _target_gauge(chlorine, "Chlor", [0.0, 10.0], [pool.chlorine_min, pool.chlorine_max], unit="mg/L")
+            st.plotly_chart(chl_fig, use_container_width=True)
+            chl_ok = pool.chlorine_min <= chlorine <= pool.chlorine_max
+            st.metric("Chlor", f"{chlorine:.1f} mg/L", delta="✅ i.O." if chl_ok else f"⚠️ Ziel {pool.chlorine_min}–{pool.chlorine_max} mg/L")
+
+    with tab_kalk:
+        csi_score = _cat_score(csi_cat)
+        lsi_score = _cat_score(lsi_cat)
+        rsi_score = _cat_score(rsi_cat)
+        consensus = 0.6 * csi_score + 0.2 * lsi_score + 0.2 * rsi_score
+
+        if consensus < -0.3:
+            cons_verdict = "korrosiv"
+            cons_msg = "🔴 Wasser tendiert zu korrosiv — Oberflächen- und Metallschäden möglich"
+            cons_what = "Calciumhärte oder Alkalinität erhöhen, pH anheben"
+        elif consensus > 0.3:
+            cons_verdict = "kalkend"
+            cons_msg = "🟠 Wasser tendiert zu kalkend — Beläge und Trübungen möglich"
+            cons_what = "pH oder Alkalinität senken"
+        else:
+            cons_verdict = "ausgeglichen"
+            cons_msg = "✅ Wasser im Kalk-Korrosion Gleichgewicht"
+            cons_what = ""
+
+        col_csi, col_lsi, col_rsi = st.columns(3)
+        with col_csi:
+            csi_arr, csi_col = _cat_arrow_color(csi_cat)
+            st.markdown(f"### {csi_arr} CSI: <span style='color:{csi_col}'>{csi:+.2f}</span>", unsafe_allow_html=True)
+            if ccpp > 0:
+                st.caption(f"⬇️ Kalkfall: ~{ccpp} mg/L CaCO₃ möglich")
+        with col_lsi:
+            lsi_arr, lsi_col = _cat_arrow_color(lsi_cat)
+            st.markdown(f"### {lsi_arr} LSI: <span style='color:{lsi_col}'>{lsi:+.2f}</span>", unsafe_allow_html=True)
+        with col_rsi:
+            rsi_arr, rsi_col = _cat_arrow_color(rsi_cat)
+            st.markdown(f"### {rsi_arr} RSI: <span style='color:{rsi_col}'>{rsi:.1f}</span>", unsafe_allow_html=True)
+
+        if cons_verdict == "ausgeglichen":
+            st.success(cons_msg)
+        else:
+            st.warning(cons_msg)
+            if cons_what:
+                st.caption(f"→ {cons_what}")
+
+        cats = [csi_cat, lsi_cat, rsi_cat]
+        unique = set(c.replace("stark ", "").replace("kalkausfällend", "kalkend") for c in cats)
+        if len(unique) > 1:
+            notes = []
+            if "ausgeglichen" not in unique:
+                notes.append("Kein Index zeigt ausgeglichenes Wasser")
+            if csi_cat != lsi_cat.replace("kalkausfällend", "kalkend"):
+                if cya > 0 or tds > 500:
+                    notes.append("CSI korrigiert LSI um CYA/TDS-Effekte")
+            if rsi_cat == "ausgeglichen" and cons_verdict != "ausgeglichen":
+                notes.append("RSI toleranter — optimiert für Metallschutz")
+            if notes:
+                st.info("💡 " + " | ".join(notes))
+
+        gauge_csi, gauge_lsi, gauge_rsi = st.columns(3)
+        with gauge_csi:
+            csi_fig = go.Figure()
+            csi_fig.add_trace(go.Indicator(
+                mode="gauge+number", value=csi, title={"text": "CSI (Wojtowicz)"},
+                gauge={"axis": {"range": [-2, 2]}, "bar": {"color": "darkblue"},
+                       "steps": [
+                           {"range": [-2, -0.5], "color": "red"},
+                           {"range": [-0.5, -0.3], "color": "orangered"},
+                           {"range": [-0.3, 0.3], "color": "green"},
+                           {"range": [0.3, 0.5], "color": "orange"},
+                           {"range": [0.5, 2], "color": "darkorange"},
+                       ]},
+            ))
+            csi_fig.update_layout(height=230, margin=dict(l=20, r=20, t=60, b=20))
+            st.plotly_chart(csi_fig, use_container_width=True)
+        with gauge_lsi:
+            lsi_fig = go.Figure()
+            lsi_fig.add_trace(go.Indicator(
+                mode="gauge+number", value=lsi, title={"text": "LSI"},
+                gauge={"axis": {"range": [-2, 2]}, "bar": {"color": "darkblue"},
+                       "steps": [
+                           {"range": [-2, -0.5], "color": "red"},
+                           {"range": [-0.5, 0.5], "color": "green"},
+                           {"range": [0.5, 2], "color": "orange"},
+                       ]},
+            ))
+            lsi_fig.update_layout(height=230, margin=dict(l=20, r=20, t=60, b=20))
+            st.plotly_chart(lsi_fig, use_container_width=True)
+        with gauge_rsi:
+            rsi_fig = go.Figure()
+            rsi_fig.add_trace(go.Indicator(
+                mode="gauge+number", value=rsi, title={"text": "RSI"},
+                gauge={"axis": {"range": [3, 11]}, "bar": {"color": "darkblue"},
+                       "steps": [
+                           {"range": [3, 5], "color": "orange"},
+                           {"range": [5, 7], "color": "green"},
+                           {"range": [7, 11], "color": "red"},
+                       ]},
+            ))
+            rsi_fig.update_layout(height=230, margin=dict(l=20, r=20, t=60, b=20))
+            st.plotly_chart(rsi_fig, use_container_width=True)
+
+        with st.expander("ℹ️ Detailwissen: CSI, LSI, RSI & Hamilton Index"):
+            st.markdown(f"""
+        **CSI (Calcium Sättigungs-Index)** – Wojtowicz 2001 (Modernster Standard)
+        Bereich: **-0,3 bis +0,3** (ausgeglichen).  
+        Korrigiert die Alkalinität um Cyanursäure (CYA) {f'({cya} mg/L)' if cya > 0 else ''}
+        und berücksichtigt TDS/Salzgehalt {f'({tds} mg/L)' if tds > 500 else ''}.  
+        *CSI ist der primäre Index für die Wasserbalance (Gewichtung 60%).*
+
+        **LSI (Langelier Sättigungs-Index)** – PHTA-Klassiker  
+        Bereich: -0,5 bis +0,5 (ausgeglichen). Vereinfachte Formel ohne CYA-Korrektur.  
+        *Referenz für die Wasserbalance (Gewichtung 20%).*
+
+        **RSI (Ryznar Stabilitäts-Index)** – Empirisch, Fokus Metalle  
+        Bereich: **5,0–7,0** (ausgeglichen, PHTA-Standard).  
+        Optimiert für Korrosionsschutz von Heizern/Rohren (Gewichtung 20%).
+
+        **Hamilton Index** – Praxistabelle von Jock Hamilton (1960er)  
+        Empfiehlt pH 7,8–8,2. Nutzt Gesamthärte vs. Gesamtalkalinität.  
+        Ignoriert Temperatur, TDS, Cyanursäure.
+
+        **CCPP (Calcium Carbonate Precipitation Potential)** – Nur bei CSI > +0,3  
+        Gibt an, wie viel mg/L CaCO₃ ausfallen könnten. Richtwert: < 10 mg/L = gering.
+            """)

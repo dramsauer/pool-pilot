@@ -8,6 +8,9 @@ from database.models import (
     Reading,
     MaintenanceTask,
     Photo,
+    Instrument,
+    TaskTemplate,
+    PoolTaskDefault,
 )
 
 
@@ -138,4 +141,94 @@ def test_migration_creates_default_pool():
 
     tw_count = session.query(Trinkwasser).count()
     assert tw_count == 1
+
+    instrument_count = session.query(Instrument).count()
+    assert instrument_count == 2
+    summer_fun = session.query(Instrument).filter(
+        Instrument.name == "Summer Fun Teststreifen"
+    ).first()
+    assert summer_fun is not None
+    assert summer_fun.can_measure_ph is True
+    session.close()
+
+
+def test_task_template_creation():
+    session = create_memory_session()
+    tmpl = TaskTemplate(
+        name="pH prüfen",
+        category="chemie",
+        interval_days=7,
+        pool_type="all",
+    )
+    session.add(tmpl)
+    session.commit()
+    saved = session.query(TaskTemplate).first()
+    assert saved.name == "pH prüfen"
+    assert saved.interval_days == 7
+    session.close()
+
+
+def test_pool_task_default():
+    session = create_memory_session()
+    pool = Pool(name="Test Pool", volume_liter=500, auto_measurement_task_days=7)
+    session.add(pool)
+    session.flush()
+    tmpl = TaskTemplate(name="Test", category="allgemein", interval_days=7)
+    session.add(tmpl)
+    session.flush()
+    ptd = PoolTaskDefault(pool_id=pool.id, template_id=tmpl.id)
+    session.add(ptd)
+    session.commit()
+    saved = session.query(PoolTaskDefault).first()
+    assert saved.pool_id == pool.id
+    assert saved.template_id == tmpl.id
+    assert saved.active is True
+    session.close()
+
+
+def test_maintenance_task_extended_fields():
+    session = create_memory_session()
+    task = MaintenanceTask(
+        task_type="dosierung",
+        title="pH-Minus: 200g",
+        recommended_amount=200.0,
+        recommended_unit="g",
+        product_name="pH-Minus",
+    )
+    session.add(task)
+    session.commit()
+    saved = session.query(MaintenanceTask).first()
+    assert saved.recommended_amount == 200.0
+    assert saved.recommended_unit == "g"
+    assert saved.product_name == "pH-Minus"
+    assert saved.actual_amount is None
+    assert saved.actual_unit is None
+    assert saved.template_id is None
+    session.close()
+
+
+def test_task_template_product_link():
+    session = create_memory_session()
+    product = Product(name="pH-Minus", typ="ph_minus", dosage_factor=1.4, unit="g")
+    session.add(product)
+    session.flush()
+    tmpl = TaskTemplate(
+        name="pH-Minus: 200g",
+        category="chemie",
+        interval_days=7,
+        product_id=product.id,
+    )
+    session.add(tmpl)
+    session.commit()
+    saved = session.query(TaskTemplate).first()
+    assert saved.product_id == product.id
+    session.close()
+
+
+def test_pool_auto_measurement_default():
+    session = create_memory_session()
+    pool = Pool(name="Test", volume_liter=500)
+    session.add(pool)
+    session.commit()
+    assert pool.auto_measurement_task_days == 7
     session.close()

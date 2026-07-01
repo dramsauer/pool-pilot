@@ -21,6 +21,9 @@ class DosingRecommendation:
     reason: str
     product_id: int | None = None
     follow_up_days: int = 0
+    priority: int = 0
+    instruction: str = ""
+    wait_minutes: int = 30
 
 
 @dataclass
@@ -29,5 +32,11 @@ class WaterBalanceResult:
     rsi: float
     lsi_category: str
     rsi_category: str
-    is_balanced: bool
+    csi: float = 0.0
+    csi_category: str = ""
+    ccpp: float = 0.0
+    is_balanced: bool = False
+    consensus: str = ""
+    consensus_detail: str = ""
+    primary_driver: str = ""
     dosing: list[DosingRecommendation] = field(default_factory=list)

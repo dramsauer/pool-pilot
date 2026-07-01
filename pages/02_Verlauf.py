@@ -48,17 +48,34 @@ df = pd.DataFrame(
             "Härte": r.hardness,
             "LSI": r.lsi_value,
             "RSI": r.rsi_value,
+            "CSI": r.csi_value if r.csi_value is not None else None,
+            "CCPP": r.ccpp_value if r.ccpp_value is not None else None,
         }
         for r in readings
     ]
 )
 
-fig = make_subplots(
-    rows=3,
-    cols=1,
-    subplot_titles=["pH & Chlor", "Alkalinität & Calciumhärte", "LSI & RSI"],
-    row_heights=[0.33, 0.33, 0.33],
-)
+has_csi = df["CSI"].notna().any()
+has_ccpp = df["CCPP"].notna().any()
+
+if has_csi:
+    fig = make_subplots(
+        rows=3,
+        cols=1,
+        subplot_titles=[
+            "pH & Chlor",
+            "Alkalinität & Calciumhärte",
+            "CSI, LSI & RSI",
+        ],
+        row_heights=[0.33, 0.33, 0.33],
+    )
+else:
+    fig = make_subplots(
+        rows=3,
+        cols=1,
+        subplot_titles=["pH & Chlor", "Alkalinität & Calciumhärte", "LSI & RSI"],
+        row_heights=[0.33, 0.33, 0.33],
+    )
 
 fig.add_trace(
     go.Scatter(x=df["Datum"], y=df["pH"], name="pH", mode="lines+markers"), row=1, col=1
@@ -90,6 +107,18 @@ fig.add_trace(
     row=3,
     col=1,
 )
+if has_csi:
+    fig.add_trace(
+        go.Scatter(
+            x=df["Datum"],
+            y=df["CSI"],
+            name="CSI",
+            mode="lines+markers",
+            line=dict(dash="dot", width=3),
+        ),
+        row=3,
+        col=1,
+    )
 
 fig.update_layout(height=700, hovermode="x unified")
 st.plotly_chart(fig, use_container_width=True)

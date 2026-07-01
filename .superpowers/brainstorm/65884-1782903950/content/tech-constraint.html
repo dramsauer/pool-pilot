@@ -1,0 +1,52 @@
+<h2>🔧 Technical Discovery</h2>
+
+<div class="section">
+  <p>I investigated the <code>streamlit_vertical_slider</code> component — it renders inside an <strong>iframe</strong>, which means:</p>
+  <div style="background:#fff3e0;border-radius:8px;padding:16px;margin:12px 0;font-size:14px">
+    ❌ Can't overlay the green zone on the slider track via CSS<br>
+    ❌ Can't inject custom elements inside the slider<br>
+    ✅ Can wrap/reposition elements <em>around</em> the iframe from the parent page
+  </div>
+  <p>So Option C (overlay) and Option A (background integration) <strong>aren't possible</strong> with the current component — the iframe walls are too high.</p>
+</div>
+
+<div class="section">
+  <h3>Revised Options</h3>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="compact" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Compact side-by-side ★</h3>
+      <p><strong>180px height.</strong> Slider + bar in a single container with tighter spacing.</p>
+      <div style="margin:8px 0;display:flex;gap:4px;align-items:center">
+        <div style="width:40px;height:120px;background:#e0e0e0;border-radius:6px;position:relative">
+          <div style="position:absolute;bottom:50%;width:100%;height:16px;background:mediumseagreen;border-radius:3px"></div>
+        </div>
+        <div style="width:16px;height:120px;background:#e0e0e0;border-radius:3px;position:relative">
+          <div style="position:absolute;bottom:20%;width:100%;height:60%;background:#81c784;border-radius:2px"></div>
+          <div style="position:absolute;bottom:50%;width:100%;height:2px;background:#1a1a1a"></div>
+        </div>
+        <div style="font-size:10px;line-height:1.3">Max 100<br>Min 40<br>▼ 0</div>
+      </div>
+      <p style="font-size:12px;color:#666">No code change to slider — just layout. Bar sits right next to it, no gap.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="custom" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Custom vertical slider</h3>
+      <p><strong>180px.</strong> Replace streamlit_vertical_slider with a <strong>self-built HTML+JS component</strong> using <code>st.components.html</code>.</p>
+      <div style="margin:8px 0;display:flex;gap:4px;align-items:center">
+        <div style="width:44px;height:120px;background:linear-gradient(to top, #e0e0e0 20%, #81c784 20%, #81c784 80%, #e0e0e0 80%);border-radius:6px;position:relative">
+          <div style="position:absolute;bottom:50%;left:-3px;width:50px;height:18px;background:mediumseagreen;border-radius:4px"></div>
+        </div>
+        <div style="font-size:10px;line-height:1.3">Max 100<br>Min 40<br>▼ 0</div>
+      </div>
+      <p style="font-size:12px;color:#666">Green zone IS the track. Clean, integrated. More work but best result.</p>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:16px;color:#888;font-size:13px"><strong>A</strong> = quick fix, keeps existing component. <strong>B</strong> = cleanest result, more implementation work.</p>

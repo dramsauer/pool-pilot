@@ -17,15 +17,52 @@ temperature_default = 35
 [products]
   [products.ph_minus]
   name = "Summer Fun pH-Minus Granulat"
-  factor = 1.4
+  typ = "ph_minus"
+  dosage_factor = 1.4
   unit = "g"
+  interval_days = 0
 
   [products.ph_plus]
   name = "Summer Fun pH-Plus Granulat"
-  factor = 0.74
+  typ = "ph_plus"
+  dosage_factor = 0.74
   unit = "g"
+  interval_days = 0
 
   [products.chlorine_tabs]
   name = "Summer Fun Perfect Care Tabs 20g"
+  typ = "chlorine"
+  dosage_factor = 0
+  unit = "Tablette(n)"
   active_chlorine_per_tab = 18.0
-  unit = "Tabletten"
+  interval_days = 7
+
+[trinkwasser]
+  [trinkwasser.stamsried]
+  name = "Stamsried – Kreiswerke Cham (03/2025)"
+  ph_default = 7.5
+  alkalinity_default = 145.0
+  calcium_hardness_default = 185.0
+  notes = "Quelle: Trinkwasseranalyse 27.03.2025, Labor Kneißler"
+
+[instruments]
+  [instruments.summer_fun_teststreifen]
+  name = "Summer Fun Teststreifen"
+  brand = "Summer Fun"
+  can_measure_ph = true
+  can_measure_chlorine = true
+  can_measure_bromine = true
+  notes = "3-in-1: pH, Chlor, Brom"
+
+  [instruments.pool_total_5in1]
+  name = "POOL Total 5 in 1"
+  brand = "POOL"
+  can_measure_ph = true
+  can_measure_chlorine = true
+  can_measure_bromine = true
+  can_measure_alkalinity = true
+  can_measure_hardness = true
+  can_measure_cya = true
+  can_measure_salt = true
+  can_measure_oxygen = true
+  notes = "8 Parameter: pH, Chlor, Brom, Alk, Härte, CYA, O₂, Salz"

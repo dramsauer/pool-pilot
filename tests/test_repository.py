@@ -8,6 +8,7 @@ from database.repository import (
     save_task,
     get_pending_tasks,
     complete_task,
+    complete_task_with_notes,
     save_photo,
     get_photos,
     delete_photo,
@@ -23,7 +24,14 @@ from database.repository import (
     update_product,
     delete_product,
     get_readings_for_pool,
+    get_task_templates,
+    get_active_templates_for_pool,
+    set_pool_template_active,
+    get_pool_task_defaults,
+    ensure_template_instances,
+    activate_defaults_for_pool,
 )
+from database.models import TaskTemplate, PoolTaskDefault, MaintenanceTask
 
 
 def setup():
@@ -168,4 +176,152 @@ def test_readings_for_pool():
     pool = save_pool(session, name="Pool A", volume_liter=1000)
     readings = get_readings_for_pool(session, pool.id)
     assert len(readings) == 0
+    session.close()
+
+
+def test_save_task_with_optional_fields():
+    session = setup()
+    task = save_task(
+        session,
+        task_type="dosierung",
+        title="pH-Minus: 200g",
+        pool_id=1,
+        product_id=1,
+        product_name="pH-Minus",
+        recommended_amount=200.0,
+        recommended_unit="g",
+    )
+    assert task.pool_id == 1
+    assert task.product_id == 1
+    assert task.product_name == "pH-Minus"
+    assert task.recommended_amount == 200.0
+    assert task.recommended_unit == "g"
+    session.close()
+
+
+def test_complete_task_with_actual_amount():
+    session = setup()
+    pool = save_pool(session, name="Test", volume_liter=1000)
+    task = save_task(
+        session, task_type="dosierung", title="Chlor: 1 Tab",
+        recommended_amount=1.0, recommended_unit="Stk",
+        product_name="Chlortabs",
+    )
+    completed = complete_task_with_notes(
+        session, task.id, executed_notes="Nur eine halbe",
+        actual_amount=0.5, actual_unit="Stk",
+    )
+    assert completed.completed is True
+    assert completed.actual_amount == 0.5
+    assert completed.actual_unit == "Stk"
+    assert completed.executed_notes == "Nur eine halbe"
+    session.close()
+
+
+def test_get_task_templates():
+    session = setup()
+    tmpl = TaskTemplate(name="Test", category="chemie", interval_days=7)
+    session.add(tmpl)
+    session.commit()
+    templates = get_task_templates(session)
+    assert len(templates) == 1
+    session.close()
+
+
+def test_active_templates_for_pool():
+    session = setup()
+    pool = save_pool(session, name="Test", volume_liter=500)
+    tmpl = TaskTemplate(name="Test", category="chemie", interval_days=7)
+    session.add(tmpl)
+    session.flush()
+    ptd = PoolTaskDefault(pool_id=pool.id, template_id=tmpl.id, active=True)
+    session.add(ptd)
+    session.commit()
+    active = get_active_templates_for_pool(session, pool.id)
+    assert len(active) == 1
+    assert active[0].name == "Test"
+    session.close()
+
+
+def test_ensure_template_instances():
+    session = setup()
+    pool = save_pool(session, name="Test", volume_liter=500)
+    tmpl = TaskTemplate(name="Weekly", category="test", interval_days=7)
+    session.add(tmpl)
+    session.flush()
+    session.add(PoolTaskDefault(pool_id=pool.id, template_id=tmpl.id, active=True))
+    session.commit()
+
+    today = datetime.date.today()
+    end = today + datetime.timedelta(days=30)
+    ensure_template_instances(session, pool.id, today, end)
+
+    instances = session.query(MaintenanceTask).filter(
+        MaintenanceTask.pool_id == pool.id,
+        MaintenanceTask.template_id == tmpl.id,
+    ).all()
+    assert len(instances) >= 4
+    session.close()
+
+
+def test_template_follow_up_on_complete():
+    session = setup()
+    pool = save_pool(session, name="Test", volume_liter=500)
+    tmpl = TaskTemplate(name="Weekly", category="test", interval_days=7)
+    session.add(tmpl)
+    session.flush()
+    task = save_task(
+        session, task_type="template", title="Weekly",
+        pool_id=pool.id, template_id=tmpl.id,
+        interval_days=7, due_date=datetime.date.today(),
+    )
+    complete_task_with_notes(session, task.id)
+    instances = session.query(MaintenanceTask).filter(
+        MaintenanceTask.template_id == tmpl.id,
+    ).all()
+    assert len(instances) == 2
+    session.close()
+
+
+def test_activate_defaults_for_pool():
+    session = setup()
+    tmpl = TaskTemplate(name="Generic", category="test", interval_days=7, pool_type="all")
+    session.add(tmpl)
+    session.flush()
+    pool = save_pool(session, name="Test", volume_liter=500, pool_type="chlorine")
+    activate_defaults_for_pool(session, pool.id)
+    defaults = get_pool_task_defaults(session, pool.id)
+    assert len(defaults) == 1
+    assert defaults[0].active is True
+    session.close()
+
+
+def test_ensure_template_instances_snaps_to_preferred_weekday():
+    session = setup()
+    # Create a pool on a Wednesday (weekday=2)
+    pool = save_pool(session, name="Test", volume_liter=500)
+    # preferred_weekday=4 means Friday
+    tmpl = TaskTemplate(name="FridayTask", category="test", interval_days=7, preferred_weekday=4)
+    session.add(tmpl)
+    session.flush()
+    session.add(PoolTaskDefault(pool_id=pool.id, template_id=tmpl.id, active=True))
+    session.commit()
+
+    # Override pool.created_at to a Wednesday
+    pool.created_at = datetime.datetime(2026, 7, 1)  # Wednesday
+    session.commit()
+
+    start = datetime.date(2026, 7, 1)   # Wednesday
+    end = datetime.date(2026, 7, 31)     # end of July
+    ensure_template_instances(session, pool.id, start, end)
+
+    instances = session.query(MaintenanceTask).filter(
+        MaintenanceTask.pool_id == pool.id,
+        MaintenanceTask.template_id == tmpl.id,
+    ).order_by(MaintenanceTask.due_date).all()
+
+    assert len(instances) >= 4
+    # All instances should fall on a Friday (weekday=4)
+    for inst in instances:
+        assert inst.due_date.weekday() == 4, f"{inst.due_date} is not a Friday"
     session.close()

@@ -1,0 +1,77 @@
+<h2>🌊 Water Level — 3 Approaches</h2>
+<p class="subtitle">All keep vertical orientation but address the visual bar placement and height</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)" style="cursor:pointer">
+    <div class="card-body">
+      <h3>A: Background Integration ★</h3>
+      <p class="subtitle">My recommendation</p>
+      <div style="margin:12px 0;display:flex;gap:16px;align-items:center">
+        <div style="width:48px;height:180px;background:linear-gradient(to top, #e0e0e0 0%, #e0e0e0 20%, #81c784 20%, #81c784 80%, #e0e0e0 80%, #e0e0e0 100%);border-radius:8px;position:relative;flex-shrink:0">
+          <div style="position:absolute;bottom:50%;left:-6px;width:60px;height:24px;background:mediumseagreen;border-radius:6px"></div>
+        </div>
+        <div style="font-size:13px;line-height:1.4">
+          <strong>How it works:</strong><br>
+          The green zone (Min-Max) <em>is</em> the slider track background.<br>
+          The thumb shows current water level.<br>
+          Labels on the side: Max, Min, 0.<br>
+          <span style="color:mediumseagreen">No separate bar needed.</span>
+        </div>
+      </div>
+      <div class="pros-cons" style="font-size:12px;margin-top:8px">
+        <div class="pros"><h4>Pros</h4><ul><li>Clean, intuitive</li><li>Saves horizontal space</li><li>-100px height</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Custom CSS needed</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)" style="cursor:pointer">
+    <div class="card-body">
+      <h3>B: Compact Side-by-Side</h3>
+      <div style="margin:12px 0;display:flex;gap:16px;align-items:center">
+        <div style="width:40px;height:180px;background:#e0e0e0;border-radius:8px;position:relative;flex-shrink:0">
+          <div style="position:absolute;bottom:50%;width:100%;height:20px;background:mediumseagreen;border-radius:4px"></div>
+        </div>
+        <div style="display:flex;gap:2px;align-items:stretch;height:180px">
+          <div style="width:18px;background:#e0e0e0;border-radius:4px;position:relative">
+            <div style="position:absolute;bottom:20%;width:100%;height:60%;background:#81c784;border-radius:3px"></div>
+            <div style="position:absolute;bottom:50%;width:100%;height:3px;background:#1a1a1a"></div>
+          </div>
+          <div style="font-size:10px;line-height:1.3">
+            <div>▲150</div>
+            <div>Max100</div>
+            <div>Min40</div>
+            <div>▼0</div>
+          </div>
+        </div>
+      </div>
+      <div class="pros-cons" style="font-size:12px;margin-top:8px">
+        <div class="pros"><h4>Pros</h4><ul><li>Familiar layout</li><li>Uses existing components</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Still two separate elements</li><li>Less elegant</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)" style="cursor:pointer">
+    <div class="card-body">
+      <h3>C: Overlay Bar on Slider</h3>
+      <div style="margin:12px 0;display:flex;gap:16px;align-items:center">
+        <div style="width:48px;height:180px;background:#e0e0e0;border-radius:8px;position:relative;flex-shrink:0">
+          <div style="position:absolute;bottom:20%;left:2px;width:44px;height:60%;background:#81c784;border-radius:4px;opacity:0.5"></div>
+          <div style="position:absolute;bottom:50%;left:-4px;width:56px;height:22px;background:mediumseagreen;border-radius:5px"></div>
+        </div>
+        <div style="font-size:13px;line-height:1.4">
+          Half-transparent green zone<br>
+          overlaid on the slider track.<br>
+          Thumb on top as usual.
+        </div>
+      </div>
+      <div class="pros-cons" style="font-size:12px;margin-top:8px">
+        <div class="pros"><h4>Pros</h4><ul><li>Simple to implement</li><li>All in one element</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Overlay may look muddy</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:16px;color:#888;font-size:13px">Click an option to select it. Or tell me in the terminal.</p>

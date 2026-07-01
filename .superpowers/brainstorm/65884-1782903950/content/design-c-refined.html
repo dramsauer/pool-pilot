@@ -1,0 +1,86 @@
+<h2>🌊 Option C — Refined Design</h2>
+<p class="subtitle">Overlay approach: green zone + level line inside the slider track</p>
+
+<div class="section">
+  <h3>Layout</h3>
+  <div style="display:flex;gap:24px;align-items:flex-start;margin:16px 0">
+    <div style="flex:1;text-align:center">
+      <div style="font-weight:600;margin-bottom:8px">Before (280px)</div>
+      <div style="display:flex;gap:4px;justify-content:center">
+        <div style="width:40px;height:280px;background:#e0e0e0;border-radius:8px;position:relative">
+          <div style="position:absolute;bottom:50%;width:100%;height:24px;background:mediumseagreen;border-radius:4px"></div>
+        </div>
+        <div style="width:24px;height:280px;background:#e0e0e0;border-radius:4px;position:relative">
+          <div style="position:absolute;bottom:20%;width:100%;height:60%;background:#81c784;border-radius:3px"></div>
+          <div style="position:absolute;bottom:50%;width:100%;height:3px;background:#1a1a1a"></div>
+        </div>
+        <div style="font-size:10px;line-height:1.3">
+          <div>▲150</div>
+          <div>Max100</div>
+          <div>Min40</div>
+          <div>▼0</div>
+        </div>
+      </div>
+    </div>
+    <div style="flex:1;text-align:center">
+      <div style="font-weight:600;margin-bottom:8px">After (180px)</div>
+      <div style="display:flex;gap:6px;justify-content:center;align-items:center">
+        <div style="width:48px;height:180px;background:#e0e0e0;border-radius:8px;position:relative">
+          <div style="position:absolute;bottom:20%;left:2px;width:44px;height:60%;background:#81c784;border-radius:4px;opacity:0.4"></div>
+          <div style="position:absolute;bottom:50%;left:-4px;width:56px;height:22px;background:mediumseagreen;border-radius:5px"></div>
+          <div style="position:absolute;bottom:50%;left:0;width:100%;height:3px;background:#1a1a1a;border-radius:2px"></div>
+        </div>
+        <div style="font-size:11px;line-height:1.5;text-align:left">
+          <div style="font-weight:600">▲ 150</div>
+          <div>Max 100</div>
+          <div style="margin-top:60px">Min 40</div>
+          <div style="font-weight:600">▼ 0</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#666;margin-top:8px">-100px savings ✓</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Implementation</h3>
+  <div style="background:#f8f8f8;border-radius:8px;padding:16px;font-size:13px;line-height:1.5">
+    <p><strong>1.</strong> Keep the <code>vertical_slider</code> component with <code>height=180</code>, gray track, standard thumb.</p>
+    <p><strong>2.</strong> Use absolute-positioned HTML/CSS overlaid on the slider to render:</p>
+    <ul>
+      <li>🟢 Semi-transparent green zone (min → max fill height)</li>
+      <li>⚫ Thin black line at current water level</li>
+    </ul>
+    <p><strong>3.</strong> Labels (▲ hi, Max, Min, ▼ 0) placed to the right of the slider, positioned using percentage offsets.</p>
+    <p><strong>4.</strong> Remove the separate <code>bar_col</code> column — everything sits in <code>vs_col</code>.</p>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Questions</h3>
+  <p class="subtitle">Let's nail down the details:</p>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="180" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>180px height</h3>
+      <p>Saves 100px. Still clearly legible.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="200" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>200px height</h3>
+      <p>Moderate reduction, more room for labels.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="150" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>150px height</h3>
+      <p>Max space savings — might feel tight.</p>
+    </div>
+  </div>
+</div>

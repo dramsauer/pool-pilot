@@ -13,6 +13,15 @@ from database.repository import (
     get_products,
     update_product,
     delete_product,
+    get_instruments,
+    get_instrument,
+    save_instrument,
+    update_instrument,
+    delete_instrument,
+    get_task_templates,
+    get_pool_task_defaults,
+    set_pool_template_active,
+    activate_defaults_for_pool,
 )
 
 st.set_page_config(
@@ -25,7 +34,7 @@ session = get_session(engine)
 
 st.title("🏊 Pools & Produkte")
 
-tab1, tab2, tab3 = st.tabs(["Pools", "Trinkwasser-Quellen", "Produkte"])
+tab1, tab2, tab3, tab4 = st.tabs(["Pools", "Trinkwasser-Quellen", "Produkte", "Messinstrumente"])
 
 with tab1:
     st.subheader("Pool verwalten")
@@ -113,6 +122,46 @@ with tab1:
             value=int(pool.temperature_default if pool else 35),
         )
 
+        st.markdown("##### 📐 Beckenmaße & Füllhöhen")
+        st.caption("Maße eingeben → Volumen bei Min/Max wird automatisch berechnet.")
+        dim_col1, dim_col2 = st.columns(2)
+        with dim_col1:
+            p_shape = st.selectbox(
+                "Form", ["rechteckig", "rund"],
+                index=0 if not pool or pool.shape in (None, "rechteckig") else 1,
+            )
+            if p_shape == "rechteckig":
+                p_len = st.number_input(
+                    "Innenlänge (cm)", min_value=1, value=int(pool.inner_length_cm or 132) if pool else 132,
+                    key="pool_inner_len",
+                )
+                p_wid = st.number_input(
+                    "Innenbreite (cm)", min_value=1, value=int(pool.inner_width_cm or 132) if pool else 132,
+                    key="pool_inner_wid",
+                )
+                area = p_len * p_wid
+            else:
+                p_dia = st.number_input(
+                    "Innendurchmesser (cm)", min_value=1, value=int(pool.inner_diameter_cm or 132) if pool else 132,
+                    key="pool_inner_dia",
+                )
+                area = 3.14159 * (p_dia / 2) ** 2
+            st.metric("Grundfläche (innen)", f"{area:,.0f} cm²")
+        with dim_col2:
+            p_fill_max = st.number_input(
+                "Max-Markierung (cm)", min_value=0.0, value=pool.max_fill_height_cm if pool else 45.0, step=0.5,
+                key="pool_fill_max", help="Wasserstand bei Max-Markierung (ab Boden)",
+            )
+            p_fill_min = st.number_input(
+                "Min-Markierung (cm)", min_value=0.0, value=pool.min_fill_height_cm if pool else 35.0, step=0.5,
+                key="pool_fill_min", help="Wasserstand bei Min-Markierung (ab Boden)",
+            )
+            v_at_max = area * p_fill_max / 1000
+            v_at_min = area * p_fill_min / 1000
+            st.metric("Volumen bei Max", f"{v_at_max:,.0f} L")
+            st.metric("Volumen bei Min", f"{v_at_min:,.0f} L")
+            volume = int(v_at_max)
+
         tw_quellen = get_trinkwasser_quellen(session)
         tw_options = {0: "Keine"} | {tw.id: tw.name for tw in tw_quellen}
         tw_id = st.selectbox(
@@ -124,8 +173,67 @@ with tab1:
             else 0,
         )
 
+        instruments = get_instruments(session)
+        inst_options = {0: "Keines"} | {i.id: i.name for i in instruments}
+        inst_id = st.selectbox(
+            "Messinstrument",
+            options=list(inst_options.keys()),
+            format_func=lambda x: inst_options[x],
+            index=list(inst_options.keys()).index(pool.instrument_id)
+            if pool and pool.instrument_id in inst_options
+            else 0,
+        )
+
+        st.markdown("##### 📋 Standard-Aufgaben")
+        st.caption("Wiederkehrende Aufgaben, die automatisch im Wartung-Kalender erscheinen.")
+        templates = get_task_templates(session)
+        pool_defaults = {ptd.template_id: ptd for ptd in get_pool_task_defaults(session, pool.id)} if pool else {}
+        active_template_ids = set()
+        for ptd in pool_defaults.values():
+            if ptd.active:
+                active_template_ids.add(ptd.template_id)
+
+        cat_labels = {"chemie": "🧪 Chemie", "technik": "🔧 Technik", "reinigung": "🧹 Reinigung", "allgemein": "📋 Allgemein"}
+        cats_order = ["chemie", "technik", "reinigung", "allgemein"]
+        templates_by_cat: dict[str, list] = {}
+        for t in templates:
+            cat = t.category if t.category in cats_order else "allgemein"
+            templates_by_cat.setdefault(cat, []).append(t)
+
+        selected_templates = set()
+        for cat in cats_order:
+            if cat in templates_by_cat:
+                st.markdown(f"**{cat_labels.get(cat, cat)}**")
+                cols = st.columns(2)
+                for i, t in enumerate(templates_by_cat[cat]):
+                    with cols[i % 2]:
+                        default_val = t.id in active_template_ids if pool else True
+                        if st.checkbox(
+                            f"{t.icon} {t.name} ({t.interval_days} Tage)",
+                            value=default_val,
+                            key=f"tmpl_{t.id}",
+                        ):
+                            selected_templates.add(t.id)
+
+        auto_task_days = st.number_input(
+            "Auto-Nachkontrolle nach Messung (Tage, 0=aus)",
+            min_value=0, max_value=365,
+            value=pool.auto_measurement_task_days if pool else 7,
+            key="auto_task_days",
+        )
+
         submitted = st.form_submit_button("Speichern")
         if submitted:
+            dim_kwargs = {
+                "shape": p_shape,
+                "min_fill_height_cm": p_fill_min,
+                "max_fill_height_cm": p_fill_max,
+            }
+            if p_shape == "rechteckig":
+                dim_kwargs.update(inner_length_cm=p_len, inner_width_cm=p_wid, inner_diameter_cm=None)
+            else:
+                dim_kwargs.update(inner_diameter_cm=p_dia, inner_length_cm=None, inner_width_cm=None)
+
             if pool:
                 update_pool(
                     session,
@@ -143,10 +251,16 @@ with tab1:
                     hardness_max=hard_max,
                     temperature_default=temp_default,
                     trinkwasser_id=tw_id if tw_id else None,
+                    instrument_id=inst_id if inst_id else None,
+                    auto_measurement_task_days=auto_task_days,
+                    **dim_kwargs,
                 )
                 st.success("Pool aktualisiert!")
+                for t in templates:
+                    is_active = t.id in selected_templates
+                    set_pool_template_active(session, pool.id, t.id, is_active)
             else:
-                save_pool(
+                new_pool = save_pool(
                     session,
                     name=name,
                     volume_liter=volume,
@@ -161,7 +275,14 @@ with tab1:
                     hardness_max=hard_max,
                     temperature_default=temp_default,
                     trinkwasser_id=tw_id if tw_id else None,
+                    instrument_id=inst_id if inst_id else None,
+                    auto_measurement_task_days=auto_task_days,
+                    **dim_kwargs,
                 )
+                activate_defaults_for_pool(session, new_pool.id)
+                for t in templates:
+                    is_active = t.id in selected_templates
+                    set_pool_template_active(session, new_pool.id, t.id, is_active)
                 st.success("Pool angelegt!")
 
     st.divider()

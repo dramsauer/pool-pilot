@@ -6,6 +6,7 @@ from database.models import MaintenanceTask
 from database.repository import (
     get_pools, get_tasks_by_date_range,
     complete_task_with_notes,
+    ensure_template_instances,
 )
 
 st.set_page_config(
@@ -96,6 +97,10 @@ last_day = datetime.date(
     calendar.monthrange(st.session_state.cal_year, st.session_state.cal_month)[1]
 )
 pool_id_arg = None if selected_pool_id == 0 else selected_pool_id
+
+# Ensure template instances for visible month
+ensure_template_instances(session, pool_id_arg, first_day, last_day)
+
 tasks = get_tasks_by_date_range(session, first_day, last_day, pool_id_arg)
 
 # Group tasks by date
@@ -121,6 +126,7 @@ html = """
 .task-dot.pending { background: #ffebee; color: #c62828; }
 .task-dot.completed { background: #e8f5e9; color: #2e7d32; text-decoration: line-through; }
 .task-dot.followup { background: #fff3e0; color: #e65100; }
+.task-dot.template { background: #e3f2fd; color: #1565c0; }
 </style>
 <div class="cal-grid">
 """
@@ -140,7 +146,12 @@ for day in month_days:
     html += f"<div class='cal-day-num'>{day}</div>"
     if d in tasks_by_date:
         for t in tasks_by_date[d]:
-            cls = "completed" if t.completed else "pending"
+            if t.completed:
+                cls = "completed"
+            elif t.template_id:
+                cls = "template"
+            else:
+                cls = "pending"
             label = t.title[:20] + ("…" if len(t.title) > 20 else "")
             html += f"<div class='task-dot {cls}' title='{t.title}'>{label}</div>"
     html += "</div>"
@@ -159,17 +170,32 @@ if tasks:
             col1, col2 = st.columns([3, 1])
             with col1:
                 st.markdown(f"**{t.title}**")
-                st.caption(
-                    f"📅 {t.due_date.strftime('%d.%m.%Y')} · {pool_name} · {status}"
-                )
+                details = f"📅 {t.due_date.strftime('%d.%m.%Y')} · {pool_name} · {status}"
+                if t.recommended_amount is not None:
+                    details += f" · Empfohlen: {t.recommended_amount:g} {t.recommended_unit or ''}"
+                if t.actual_amount is not None:
+                    details += f" · Gegeben: {t.actual_amount:g} {t.actual_unit or ''}"
+                st.caption(details)
             with col2:
                 if not t.completed:
                     notes = st.text_input(
                         "Notiz", key=f"notes_{t.id}", label_visibility="collapsed",
                         placeholder="Notiz…"
                     )
+                    actual_amount = None
+                    actual_unit = t.recommended_unit
+                    if t.recommended_amount is not None:
+                        actual_amount = st.number_input(
+                            "Dosis", value=t.recommended_amount, step=0.1,
+                            key=f"amt_cal_{t.id}", label_visibility="collapsed",
+                            placeholder=f"Menge ({actual_unit or 'g'})",
+                        )
                     if st.button("Erledigt", key=f"done_{t.id}"):
-                        complete_task_with_notes(session, t.id, notes)
+                        complete_task_with_notes(
+                            session, t.id, notes,
+                            actual_amount=actual_amount,
+                            actual_unit=actual_unit,
+                        )
                         st.rerun()
 else:
     st.info("Keine Aufgaben in diesem Monat.")
