@@ -1,7 +1,7 @@
 import streamlit as st
 from pathlib import Path
 from datetime import date
-from utils.export_import import create_export_zip, analyze_zip, execute_import
+from utils.export_import import create_export_zip, analyze_zip, execute_import, PARENT_DEPENDENCIES, DEPENDENCY_ORDER
 from database.db import get_session
 from database.models import Pool, Product, Instrument, Trinkwasser, TaskTemplate, Reading, MaintenanceTask
 from utils.theme import inject_theme
@@ -18,6 +18,10 @@ if "analyze_result" not in st.session_state:
     st.session_state.analyze_result = None
 if "import_zip_bytes" not in st.session_state:
     st.session_state.import_zip_bytes = None
+if "import_blocked" not in st.session_state:
+    st.session_state.import_blocked = True
+if "confirm_import" not in st.session_state:
+    st.session_state.confirm_import = False
 
 st.title("🔐 Daten-Export / -Import")
 
@@ -48,7 +52,7 @@ if st.session_state.export_zip_bytes:
 st.header("Import")
 st.write("Lade ein Backup-ZIP hoch, um Daten in die aktuelle Datenbank zu importieren oder zusammenzuführen.")
 
-uploaded_zip = st.file_uploader("⬆ Backup-ZIP hochladen", type="zip")
+uploaded_zip = st.file_uploader("⬆ Backup-ZIP hochladen", type="zip", key="import_zip_uploader")
 
 if uploaded_zip is not None:
     zip_bytes = uploaded_zip.getvalue()
@@ -64,6 +68,7 @@ if uploaded_zip is not None:
             st.error(f"Ungültiges ZIP: {result.error}")
             st.stop()
         st.success("ZIP-Analyse abgeschlossen!")
+        st.session_state.confirm_import = False
 
         st.session_state.analyze_result = result
         st.session_state.import_zip_bytes = zip_bytes
@@ -135,7 +140,6 @@ if st.session_state.analyze_result:
         strategies[key] = strategy
 
     # Dependency warnings
-    from utils.export_import import PARENT_DEPENDENCIES
     warnings = []
     for child, parents in PARENT_DEPENDENCIES.items():
         if child not in ["readings", "maintenance_tasks"]:
@@ -151,18 +155,15 @@ if st.session_state.analyze_result:
     if warnings:
         for w in warnings:
             st.warning(w)
-        st.session_state["import_blocked"] = True
+        st.session_state.import_blocked = True
     else:
-        st.session_state["import_blocked"] = False
+        st.session_state.import_blocked = False
 
     # Confirmation + Execute
-    if "confirm_import" not in st.session_state:
-        st.session_state["confirm_import"] = False
+    if st.button("🚀 Import durchführen", disabled=st.session_state.import_blocked):
+        st.session_state.confirm_import = True
 
-    if st.button("🚀 Import durchführen", disabled=st.session_state.get("import_blocked", True)):
-        st.session_state["confirm_import"] = True
-
-    if st.session_state["confirm_import"] and not st.session_state.get("import_blocked", True):
+    if st.session_state.confirm_import and not st.session_state.import_blocked:
         st.warning("Dieser Vorgang verändert die Datenbank. Fortfahren?")
         col1, col2 = st.columns(2)
         if col1.button("✅ Ja, importieren"):
@@ -173,14 +174,12 @@ if st.session_state.analyze_result:
                         current_session=session,
                         imported_db_path=result.imported_db_path,
                         strategies=strategies,
-                        id_maps={},
                         photos_extract_dir=result.extract_dir,
                         data_photos_dir=str(data_dir / "photos"),
                     )
                     st.success("Import abgeschlossen!")
                     st.subheader("Ergebnis")
 
-                    from utils.export_import import DEPENDENCY_ORDER
                     for cat in DEPENDENCY_ORDER:
                         if cat in import_result:
                             r = import_result[cat]
@@ -204,8 +203,9 @@ if st.session_state.analyze_result:
             if result.tmp_path:
                 shutil.rmtree(result.tmp_path, ignore_errors=True)
 
-            st.session_state["confirm_import"] = False
-            st.session_state["analyze_result"] = None
+            st.session_state.confirm_import = False
+            st.session_state.analyze_result = None
+            st.rerun()
 
         if col2.button("❌ Abbrechen"):
-            st.session_state["confirm_import"] = False
+            st.session_state.confirm_import = False
