@@ -21,6 +21,8 @@ dev = [
     "tomli>=2.0; python_version < '3.11'",
 ]
 
+[tool.setuptools.packages.find]
+include = ["pages*", "database*", "pool_calculations*", "utils*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
