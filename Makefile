@@ -3,7 +3,7 @@ APP_NAME := pool-water-balance
 DOCKER_COMPOSE := docker compose
 PYTHON := python3
 
-.PHONY: help install run start stop quit logs test build dev clean shell restart
+.PHONY: help install run start stop quit logs test build dev clean shell restart dev-restart
 
 help:
 	@echo "================================================"
@@ -13,6 +13,7 @@ help:
 	@echo "  Development:"
 	@echo "    make install     Install project + dev deps"
 	@echo "    make dev         Run app locally (streamlit)"
+	@echo "    make dev-restart Re-launch streamlit in devcontainer (no rebuild)"
 	@echo "    make test        Run all tests"
 	@echo ""
 	@echo "  Docker:"
@@ -42,6 +43,16 @@ install:
 
 dev:
 	$(PYTHON) -m streamlit run Wasserrechner.py --server.address=0.0.0.0 --server.port=8501
+
+dev-restart:
+	@echo "Restarting Streamlit in devcontainer..."
+	@pid=$$(ps aux | grep "streamlit run Wasserrechner" | grep -v grep | awk '{print $$2}'); \
+	if [ -n "$$pid" ]; then \
+		kill "$$pid" 2>/dev/null && echo "Killed old process (PID $$pid)"; \
+		sleep 1; \
+	fi
+	nohup streamlit run Wasserrechner.py --server.headless=true --server.address=0.0.0.0 --server.port=8501 > /tmp/streamlit.log 2>&1 &
+	@echo "Streamlit restarted at http://localhost:8501  (log: /tmp/streamlit.log)"
 
 test:
 	$(PYTHON) -m pytest tests/ -v
