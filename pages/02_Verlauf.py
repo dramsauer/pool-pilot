@@ -4,10 +4,12 @@ from plotly.subplots import make_subplots
 import pandas as pd
 from database.db import get_engine, init_db, get_session
 from database.repository import get_pools, get_readings_since, get_readings_for_pool
+from utils.theme import inject_theme
 
 st.set_page_config(
     page_title="PoolPilot - Dein intelligenter Pool-Helfer", page_icon="🏊"
 )
+inject_theme()
 
 engine = get_engine()
 init_db(engine)

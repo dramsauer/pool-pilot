@@ -1,6 +1,7 @@
 import datetime
 import streamlit as st
 from database.db import get_engine, init_db, get_session
+from utils.theme import inject_theme
 from database.repository import (
     get_pools,
     get_pending_tasks,
@@ -15,6 +16,7 @@ from database.models import Product
 st.set_page_config(
     page_title="PoolPilot - Dein intelligenter Pool-Helfer", page_icon="🏊"
 )
+inject_theme()
 
 engine = get_engine()
 init_db(engine)

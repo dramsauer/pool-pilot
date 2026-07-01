@@ -21,6 +21,7 @@ from pool_calculations.rsi import calculate_rsi, categorize_rsi
 from pool_calculations.csi import calculate_csi, categorize_csi, calculate_ccpp
 from pool_calculations.dosing import recommend_dosing_from_db
 from pool_calculations.models import WaterTest
+from utils.theme import inject_theme
 
 
 def _target_gauge(value, title, axis_range, green_zone, unit=""):
@@ -51,6 +52,8 @@ st.set_page_config(
     page_icon="🏊",
     layout="centered",
 )
+
+inject_theme()
 
 st.markdown("""
 <style>

@@ -2,8 +2,10 @@ import streamlit as st
 from pathlib import Path
 from datetime import date
 from utils.export_import import create_export_zip, analyze_zip
+from utils.theme import inject_theme
 
 st.set_page_config(page_title="Daten-Export / -Import", page_icon="🔐")
+inject_theme()
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 

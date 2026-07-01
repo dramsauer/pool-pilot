@@ -3,6 +3,7 @@ import calendar
 import streamlit as st
 from database.db import get_engine, init_db, get_session
 from database.models import MaintenanceTask
+from utils.theme import inject_theme
 from database.repository import (
     get_pools, get_tasks_by_date_range,
     complete_task_with_notes,
@@ -12,6 +13,7 @@ from database.repository import (
 st.set_page_config(
     page_title="PoolPilot - Dein intelligenter Pool-Helfer", page_icon="🏊"
 )
+inject_theme()
 
 engine = get_engine()
 init_db(engine)
