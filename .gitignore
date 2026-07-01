@@ -6,3 +6,4 @@ data/photos/
 *.egg-info/
 .pytest_cache/
 .venv/
+docs/superpowers/

@@ -1,0 +1,4 @@
+services:
+  pool-app:
+    volumes:
+      - ..:/app:delegated
