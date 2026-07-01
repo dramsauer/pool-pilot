@@ -97,7 +97,12 @@ def analyze_zip(zip_bytes: bytes) -> AnalysisResult:
         extract_dir = Path(tmp) / "extracted"
         zip_path = Path(tmp) / "import.zip"
         zip_path.write_bytes(zip_bytes)
-        shutil.unpack_archive(str(zip_path), str(extract_dir), "zip")
+        with zipfile.ZipFile(str(zip_path), "r") as zf:
+            for member in zf.namelist():
+                target = (extract_dir / member).resolve()
+                if not str(target).startswith(str(extract_dir.resolve())):
+                    raise ValueError("Path traversal detected in ZIP")
+            zf.extractall(str(extract_dir))
         db_file = extract_dir / "pool.db"
         if not db_file.exists():
             shutil.rmtree(tmp)

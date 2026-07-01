@@ -142,8 +142,6 @@ if st.session_state.analyze_result:
     # Dependency warnings
     warnings = []
     for child, parents in PARENT_DEPENDENCIES.items():
-        if child not in ["readings", "maintenance_tasks"]:
-            continue
         if strategies.get(child, "skip") != "skip":
             for parent in parents:
                 if strategies.get(parent, "skip") == "skip":
