@@ -1,5 +1,6 @@
 import zipfile
 import io
+import shutil
 from pathlib import Path
 from database.db import get_engine, get_session
 from database.models import Base, Pool, Product
@@ -126,3 +127,5 @@ def test_analyze_zip_returns_counts(tmp_path):
     assert result.counts["products"] == 1
     assert result.counts["readings"] == 0
     assert result.photo_count == 0
+
+    shutil.rmtree(result.tmp_path, ignore_errors=True)
