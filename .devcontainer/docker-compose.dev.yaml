@@ -1,4 +1,8 @@
 services:
   pool-app:
     volumes:
-      - ..:/app:delegated
+      - vscode:/vscode
+
+volumes:
+  vscode:
+    external: true
