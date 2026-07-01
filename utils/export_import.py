@@ -5,7 +5,6 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
-from sqlalchemy import create_engine
 from database.db import get_engine, get_session
 from database.models import (
     Instrument, Trinkwasser, Product, TaskTemplate, PoolTaskDefault,
@@ -166,93 +165,95 @@ def execute_import(
     if id_maps is None:
         id_maps = {}
 
-    imported_engine = create_engine(f"sqlite:///{imported_db_path}")
+    imported_engine = get_engine(imported_db_path)
     imported_session = get_session(imported_engine)
 
-    if "photos" not in strategies and PHOTO_AUTO_PARENT in strategies:
-        strategies["photos"] = strategies[PHOTO_AUTO_PARENT]
+    try:
+        if "photos" not in strategies and PHOTO_AUTO_PARENT in strategies:
+            strategies["photos"] = strategies[PHOTO_AUTO_PARENT]
 
-    pool_strat = strategies.get("pools", "skip")
-    template_strat = strategies.get("task_templates", "skip")
-    if pool_strat != "skip" and template_strat != "skip":
-        strategies.setdefault("pool_task_defaults", "replace")
+        pool_strat = strategies.get("pools", "skip")
+        template_strat = strategies.get("task_templates", "skip")
+        if pool_strat != "skip" and template_strat != "skip":
+            strategies.setdefault("pool_task_defaults", "replace")
 
-    result = {}
+        result = {}
 
-    for category in DEPENDENCY_ORDER:
-        strategy = strategies.get(category, "skip")
-        if strategy == "skip":
-            result[category] = {"status": "skipped", "count": 0, "action": "skipped"}
-            continue
+        for category in DEPENDENCY_ORDER:
+            strategy = strategies.get(category, "skip")
+            if strategy == "skip":
+                result[category] = {"status": "skipped", "count": 0, "action": "skipped"}
+                continue
 
-        model_cls = TABLE_CATEGORIES[category]["model"]
-        imported_records = list(imported_session.query(model_cls).all())
+            model_cls = TABLE_CATEGORIES[category]["model"]
+            imported_records = list(imported_session.query(model_cls).all())
 
-        if strategy == "replace":
-            current_session.query(model_cls).delete()
-            current_session.flush()
-
-            count = 0
-            for rec in imported_records:
-                rd = _get_row_dict(rec)
-                imported_id = rd.pop("id")
-                rd.pop("created_at", None)
-                rd.pop("completed_at", None)
-                rd.pop("executed_at", None)
-                rd = _remap_fk(rd, id_maps, category)
-                new_obj = model_cls(**rd)
-                current_session.add(new_obj)
+            if strategy == "replace":
+                current_session.query(model_cls).delete()
                 current_session.flush()
-                id_maps.setdefault(category, {})[imported_id] = new_obj.id
-                count += 1
 
-            current_session.commit()
-            result[category] = {"status": "ok", "count": count, "action": "replaced"}
-
-        elif strategy == "merge":
-            merge_keys = CATEGORY_MERGE_KEYS.get(category, ["name"])
-            count = 0
-            for rec in imported_records:
-                rd = _get_row_dict(rec)
-                imported_id = rd.pop("id")
-                rd.pop("created_at", None)
-                rd.pop("completed_at", None)
-                rd.pop("executed_at", None)
-                rd = _remap_fk(rd, id_maps, category)
-
-                filters = {}
-                for k in merge_keys:
-                    if k in rd and rd[k] is not None:
-                        filters[k] = rd[k]
-                filters = _remap_merge_filters(filters, id_maps, category)
-
-                existing = None
-                if filters:
-                    existing = current_session.query(model_cls).filter_by(**filters).first()
-
-                if existing is not None:
-                    id_maps.setdefault(category, {})[imported_id] = existing.id
-                else:
+                count = 0
+                for rec in imported_records:
+                    rd = _get_row_dict(rec)
+                    imported_id = rd.pop("id")
+                    rd.pop("created_at", None)
+                    rd.pop("completed_at", None)
+                    rd.pop("executed_at", None)
+                    rd = _remap_fk(rd, id_maps, category)
                     new_obj = model_cls(**rd)
                     current_session.add(new_obj)
                     current_session.flush()
                     id_maps.setdefault(category, {})[imported_id] = new_obj.id
                     count += 1
 
-            current_session.commit()
-            result[category] = {"status": "ok", "count": count, "action": "merged"}
+                current_session.commit()
+                result[category] = {"status": "ok", "count": count, "action": "replaced"}
 
-    imported_session.close()
+            elif strategy == "merge":
+                merge_keys = CATEGORY_MERGE_KEYS.get(category, ["name"])
+                count = 0
+                for rec in imported_records:
+                    rd = _get_row_dict(rec)
+                    imported_id = rd.pop("id")
+                    rd.pop("created_at", None)
+                    rd.pop("completed_at", None)
+                    rd.pop("executed_at", None)
+                    rd = _remap_fk(rd, id_maps, category)
 
-    if strategies.get("photos", "skip") != "skip" and photos_extract_dir and data_photos_dir:
-        photos_result = _handle_photo_files(
-            photos_extract_dir, data_photos_dir,
-            strategy=strategies.get("photos", "merge"),
-        )
-        result["photo_files"] = photos_result
+                    filters = {}
+                    for k in merge_keys:
+                        if k in rd and rd[k] is not None:
+                            filters[k] = rd[k]
+                    filters = _remap_merge_filters(filters, id_maps, category)
 
-    result["_id_maps"] = id_maps
-    return result
+                    existing = None
+                    if filters:
+                        existing = current_session.query(model_cls).filter_by(**filters).first()
+
+                    if existing is not None:
+                        id_maps.setdefault(category, {})[imported_id] = existing.id
+                    else:
+                        new_obj = model_cls(**rd)
+                        current_session.add(new_obj)
+                        current_session.flush()
+                        id_maps.setdefault(category, {})[imported_id] = new_obj.id
+                        count += 1
+
+                current_session.commit()
+                result[category] = {"status": "ok", "count": count, "action": "merged"}
+
+        if strategies.get("photos", "skip") != "skip" and photos_extract_dir and data_photos_dir:
+            photos_result = _handle_photo_files(
+                photos_extract_dir, data_photos_dir,
+                strategy=strategies.get("photos", "merge"),
+            )
+            result["photo_files"] = photos_result
+
+        result["_id_maps"] = id_maps
+        return result
+    finally:
+        imported_session.close()
+        imported_engine.dispose()
 
 
 def _handle_photo_files(src_dir: str, dst_dir: str, strategy: str) -> dict:
