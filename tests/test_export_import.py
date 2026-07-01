@@ -2,6 +2,7 @@ import zipfile
 import io
 import shutil
 from pathlib import Path
+from sqlalchemy import create_engine
 from database.db import get_engine, get_session
 from database.models import Base, Pool, Product, Reading
 from utils.export_import import analyze_zip, AnalysisResult, create_export_zip, execute_import
@@ -291,4 +292,44 @@ def test_execute_import_remaps_readings_fk(tmp_path):
     assert len(readings) == 1
     new_pool = s.query(Pool).first()
     assert readings[0].pool_id == new_pool.id
+    s.close()
+
+
+def test_execute_import_merge_preserves_timestamp(tmp_path):
+    from datetime import datetime
+
+    current_db = tmp_path / "current.db"
+    current_engine = create_engine(f"sqlite:///{current_db}")
+    Base.metadata.create_all(current_engine)
+    s = get_session(current_engine)
+    s.add(Pool(name="TestPool", volume_liter=1000))
+    s.commit()
+    s.close()
+
+    imported_db = tmp_path / "imported.db"
+    imported_engine = create_engine(f"sqlite:///{imported_db}")
+    Base.metadata.create_all(imported_engine)
+    s = get_session(imported_engine)
+    p = Pool(name="TestPool", volume_liter=1000)
+    s.add(p)
+    s.flush()
+    ts = datetime(2026, 7, 1, 10, 30, 0)
+    s.add(Reading(
+        pool_id=p.id, timestamp=ts,
+        ph=7.2, chlorine=1.0, alkalinity=100, hardness=200, temperature_c=30,
+    ))
+    s.commit()
+    s.close()
+
+    current_sesh = get_session(current_engine)
+
+    r1 = execute_import(current_session=current_sesh, imported_db_path=str(imported_db), strategies={"pools": "merge"}, id_maps={})
+    r2 = execute_import(current_session=current_sesh, imported_db_path=str(imported_db), strategies={"readings": "merge"}, id_maps=r1.get("_id_maps", {}))
+
+    current_sesh.close()
+
+    s = get_session(current_engine)
+    readings = s.query(Reading).all()
+    assert len(readings) == 1
+    assert readings[0].timestamp == ts
     s.close()
