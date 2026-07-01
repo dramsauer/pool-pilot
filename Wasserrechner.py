@@ -87,6 +87,10 @@ with st.sidebar:
     )
 pool = get_pool(session, selected_pool_id)
 
+st.sidebar.divider()
+with st.sidebar.expander("Weitere"):
+    st.page_link("pages/09_Datenverwaltung.py", label="🔐 Daten-Export/-Import")
+
 # Load products for dosing
 products = get_products(session)
 
