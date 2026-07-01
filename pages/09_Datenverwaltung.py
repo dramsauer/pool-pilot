@@ -7,6 +7,14 @@ st.set_page_config(page_title="Daten-Export / -Import", page_icon="🔐")
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 
+# Initialize session state
+if "export_zip_bytes" not in st.session_state:
+    st.session_state.export_zip_bytes = None
+if "analyze_result" not in st.session_state:
+    st.session_state.analyze_result = None
+if "import_zip_bytes" not in st.session_state:
+    st.session_state.import_zip_bytes = None
+
 st.title("🔐 Daten-Export / -Import")
 
 st.header("Export")
@@ -19,20 +27,19 @@ if st.button("📦 Vollständiges Backup erstellen"):
     with st.spinner("Backup wird erstellt..."):
         try:
             zip_bytes = create_export_zip(DATA_DIR)
-            st.session_state.zip_bytes = zip_bytes
+            st.session_state.export_zip_bytes = zip_bytes
         except Exception as e:
             st.error(f"Backup fehlgeschlagen: {e}")
 
-if st.session_state.get("zip_bytes"):
+if st.session_state.export_zip_bytes:
     st.download_button(
         label="💾 ZIP speichern",
-        data=st.session_state.zip_bytes,
+        data=st.session_state.export_zip_bytes,
         file_name=f"poolpilot-backup-{date.today().isoformat()}.zip",
         mime="application/zip",
     )
     if st.button("Neues Backup erstellen"):
-        st.session_state.zip_bytes = None
-        st.rerun()
+        st.session_state.export_zip_bytes = None
 
 st.header("Import")
 st.write("Lade ein Backup-ZIP hoch, um Daten in die aktuelle Datenbank zu importieren oder zusammenzuführen.")
@@ -44,14 +51,18 @@ if uploaded_zip is not None:
 
     if st.button("🔍 ZIP analysieren"):
         with st.spinner("Analysiere..."):
-            result = analyze_zip(zip_bytes)
+            try:
+                result = analyze_zip(zip_bytes)
+            except Exception as e:
+                st.error(f"Analyse fehlgeschlagen: {e}")
+                st.stop()
         if not result.valid:
             st.error(f"Ungültiges ZIP: {result.error}")
             st.stop()
         st.success("ZIP-Analyse abgeschlossen!")
 
-        st.session_state["analyze_result"] = result
-        st.session_state["zip_bytes"] = zip_bytes
+        st.session_state.analyze_result = result
+        st.session_state.import_zip_bytes = zip_bytes
 
         col1, col2 = st.columns(2)
         col1.metric("Datenbank-Einträge", sum(result.counts.values()))
@@ -67,3 +78,6 @@ if uploaded_zip is not None:
             c = result.counts.get(key, 0)
             if c > 0:
                 st.write(f"- {label}: **{c}**")
+
+if st.session_state.analyze_result:
+    pass
