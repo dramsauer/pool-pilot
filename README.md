@@ -1,4 +1,4 @@
-# PoolPilot — Intelligenter Pool-Wasser-Rechner
+# PoolPilot — Intelligent Pool Water Buddy
 
 A Streamlit-based web app for pool water chemistry management.  
 Track measurements, calculate balance indices (CSI/LSI/RSI), get dosing recommendations, and manage maintenance tasks.
