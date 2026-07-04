@@ -23,6 +23,7 @@ from pool_calculations.dosing import recommend_dosing_from_db
 from pool_calculations.models import WaterTest
 from utils.theme import inject_theme
 from utils.nav import render_sidebar
+from utils.task_dialog import task_dialog
 
 
 def _target_gauge(value, title, axis_range, green_zone, unit=""):
@@ -501,7 +502,7 @@ if st.session_state.show_results:
                             "\U0001f4cb Aufgabe", key=f"task_{d.product}",
                             use_container_width=True,
                         ):
-                            save_task(
+                            task = save_task(
                                 session,
                                 task_type="dosierung",
                                 title=f"{d.product}: {d.amount:g} {d.unit}",
@@ -509,7 +510,8 @@ if st.session_state.show_results:
                                 due_date=datetime.date.today(),
                                 interval_days=0,
                             )
-                            st.session_state.task_created = True
+                            st.session_state.cal_selected_task_id = task.id
+                            st.session_state.cal_click_seed = st.session_state.get("cal_click_seed", 0) + 1
                             st.rerun()
                     with cols[2]:
                         if is_done:
@@ -703,3 +705,6 @@ if st.session_state.show_results:
 
 
 render_sidebar(pools)
+
+if st.session_state.get("cal_selected_task_id"):
+    task_dialog(st.session_state.cal_selected_task_id, session, pools, products)
