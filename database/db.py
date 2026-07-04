@@ -220,15 +220,14 @@ def _seed_task_templates(session: Session):
         import tomli as tomllib
     with open(config_path, "rb") as f:
         data = tomllib.load(f)
-    templates = data.get("task_defaults", {}).get("templates", [])
-    seeded_any = False
-    for tmpl_data in templates:
+    config_templates = data.get("task_defaults", {}).get("templates", [])
+    config_names = {t["name"] for t in config_templates}
+
+    # Upsert all config templates
+    for tmpl_data in config_templates:
         existing = session.query(TaskTemplate).filter(
             TaskTemplate.name == tmpl_data["name"]
         ).first()
-        if existing:
-            continue
-        seeded_any = True
         product_id = None
         product_name = tmpl_data.get("product_name")
         if product_name:
@@ -237,8 +236,7 @@ def _seed_task_templates(session: Session):
             ).first()
             if product:
                 product_id = product.id
-        session.add(TaskTemplate(
-            name=tmpl_data["name"],
+        vals = dict(
             category=tmpl_data.get("category", "allgemein"),
             interval_days=tmpl_data.get("interval_days", 7),
             default_follow_up_days=tmpl_data.get("default_follow_up_days", 0),
@@ -247,11 +245,30 @@ def _seed_task_templates(session: Session):
             preferred_weekday=tmpl_data.get("preferred_weekday"),
             product_name=product_name,
             product_id=product_id,
-        ))
+        )
+        if existing:
+            for k, v in vals.items():
+                setattr(existing, k, v)
+        else:
+            session.add(TaskTemplate(name=tmpl_data["name"], **vals))
     session.commit()
 
-    # Auto-activate matching templates for pools (only when new templates were seeded)
-    if seeded_any or session.query(PoolTaskDefault).count() == 0:
+    # Remove templates that are no longer in config (safe: they were seeded, not user-created)
+    all_names = {t.name for t in session.query(TaskTemplate).all()}
+    to_delete = all_names - config_names
+    if to_delete:
+        for tmpl in session.query(TaskTemplate).filter(TaskTemplate.name.in_(to_delete)).all():
+            session.query(MaintenanceTask).filter(MaintenanceTask.template_id == tmpl.id).update({MaintenanceTask.template_id: None})
+            session.query(PoolTaskDefault).filter(PoolTaskDefault.template_id == tmpl.id).delete()
+            session.delete(tmpl)
+        session.commit()
+
+    # Auto-activate matching templates for pools
+    seeded_or_missing = any(
+        session.query(PoolTaskDefault).filter(PoolTaskDefault.template_id == t.id).count() == 0
+        for t in session.query(TaskTemplate).all()
+    )
+    if seeded_or_missing:
         for pool in session.query(Pool).all():
             templates = session.query(TaskTemplate).filter(
                 (TaskTemplate.pool_type == pool.pool_type) | (TaskTemplate.pool_type == "all")
