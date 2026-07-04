@@ -44,8 +44,7 @@ with tab1:
     templates_to_show = get_active_templates_for_pool(session, pool_filter) if pool_filter else []
     if not pool_filter and pools:
         templates_to_show = get_active_templates_for_pool(session, pools[0].id) if pools else []
-    # ponytail: exclude measurement reminders from quick-add (they're in task list/calendar only)
-    templates_to_show = [t for t in templates_to_show if "Messung" not in t.name]
+
 
     if templates_to_show:
         categories = {}
