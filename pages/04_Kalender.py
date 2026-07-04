@@ -119,13 +119,18 @@ cal_options = {
     "dayMaxEvents": 3,
 }
 
+if "cal_click_seed" not in st.session_state:
+    st.session_state.cal_click_seed = 0
+
 cal_result = st_calendar(
     events=events, options=cal_options,
-    callbacks=["eventClick"], key="pool_calendar",
+    callbacks=["eventClick"],
+    key=f"pool_calendar_{st.session_state.cal_click_seed}",
 )
 
 if cal_result is not None and cal_result.get("callback") == "eventClick":
     st.session_state.cal_selected_task_id = cal_result["eventClick"]["event"]["extendedProps"]["task_id"]
+    st.session_state.cal_click_seed += 1
     st.rerun()
 
 if st.session_state.get("cal_selected_task_id"):
