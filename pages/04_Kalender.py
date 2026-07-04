@@ -163,8 +163,6 @@ def task_dialog(task_id):
 
     edit_notes = st.text_area("Notiz", value=task.executed_notes or "")
 
-    if task.created_at:
-        st.caption(f"Erstellt: {task.created_at.strftime('%d.%m.%Y %H:%M')}")
     if task.interval_days:
         st.caption(f"Intervall: alle {task.interval_days} Tage")
 
