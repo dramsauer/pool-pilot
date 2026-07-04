@@ -1,6 +1,7 @@
 services:
   pool-app:
     volumes:
+      - .:/app
       - vscode:/vscode
 
 volumes:
