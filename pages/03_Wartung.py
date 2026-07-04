@@ -14,9 +14,8 @@ from database.repository import (
     get_task_templates,
     get_pool_task_defaults,
     set_pool_template_active,
-    activate_defaults_for_pool,
 )
-from database.models import Product, TaskTemplate, PoolTaskDefault
+from database.models import Product, TaskTemplate, PoolTaskDefault, MaintenanceTask
 
 st.set_page_config(
     page_title="PoolPilot - Dein intelligenter Pool-Helfer", page_icon="🏊"
@@ -30,7 +29,7 @@ session = get_session(engine)
 pools = get_pools(session)
 render_sidebar(pools)
 
-st.title("✅ Aufgaben & Vorlagen")
+st.title("✅ Aufgaben")
 
 selected_pool_id = st.session_state.get("pool_selector", 0)
 pool_filter = None if selected_pool_id == 0 else selected_pool_id
@@ -208,6 +207,8 @@ with tab2:
     all_templates = get_task_templates(session)
     cat_labels = {"chemie": "🧪 Chemie", "technik": "🔧 Technik", "reinigung": "🧹 Reinigung", "allgemein": "📋 Allgemein"}
 
+    products = session.query(Product).order_by(Product.name).all()
+
     with st.expander("➕ Neue Vorlage", expanded=False):
         with st.form("new_template"):
             t_name = st.text_input("Name", placeholder="z.B. Filter rückspülen")
@@ -217,7 +218,6 @@ with tab2:
             t_pool_type = st.selectbox("Pool-Typ", options=["all", "chlorine", "bromine"])
             t_follow_up = st.number_input("Folgeaufgabe (Tage, 0 = keine)", min_value=0, value=0)
             t_description = st.text_area("Beschreibung (optional)")
-            products = session.query(Product).order_by(Product.name).all()
             product_options = {0: "— Kein Produkt —"} | {p.id: p.name for p in products}
             t_product_id = st.selectbox("Produkt (optional)", options=list(product_options.keys()), format_func=lambda x: product_options[x])
             if st.form_submit_button("💾 Speichern"):
@@ -261,20 +261,52 @@ with tab2:
             if st.button("✏️", key=f"edit_btn_{tmpl.id}", help="Bearbeiten"):
                 st.session_state[edit_key] = not st.session_state.get(edit_key, False)
 
-            if st.button("🗑️", key=f"del_{tmpl.id}", help="Löschen"):
-                session.delete(tmpl)
-                session.commit()
-                st.rerun()
+            del_key = f"del_{tmpl.id}"
+            if st.button("🗑️", key=f"del_btn_{tmpl.id}", help="Löschen"):
+                st.session_state[del_key] = True
+
+            if st.session_state.get(del_key, False):
+                st.warning(f"Vorlage '{tmpl.name}' wirklich löschen?")
+                if st.button("Ja, löschen", key=f"confirm_del_{tmpl.id}"):
+                    session.query(MaintenanceTask).filter(
+                        MaintenanceTask.template_id == tmpl.id
+                    ).update({MaintenanceTask.template_id: None})
+                    session.delete(tmpl)
+                    session.commit()
+                    st.session_state[del_key] = False
+                    st.rerun()
+                if st.button("Abbrechen", key=f"cancel_del_{tmpl.id}"):
+                    st.session_state[del_key] = False
+                    st.rerun()
 
             if st.session_state.get(edit_key, False):
                 with st.form(key=f"edit_form_{tmpl.id}"):
                     e_name = st.text_input("Name", value=tmpl.name)
                     e_icon = st.text_input("Icon", value=tmpl.icon or "📋", max_chars=5)
-                    e_interval = st.number_input("Intervall", min_value=0, value=tmpl.interval_days or 7)
+                    e_category = st.selectbox(
+                        "Kategorie", options=["chemie", "technik", "reinigung", "allgemein"],
+                        index=["chemie", "technik", "reinigung", "allgemein"].index(tmpl.category or "allgemein"),
+                        format_func=lambda x: cat_labels.get(x, x),
+                    )
+                    e_interval = st.number_input("Intervall (Tage)", min_value=0, value=tmpl.interval_days or 7)
                     e_pool_type = st.selectbox("Pool-Typ", options=["all", "chlorine", "bromine"], index=["all", "chlorine", "bromine"].index(tmpl.pool_type or "all"))
+                    e_follow_up = st.number_input("Folgeaufgabe (Tage)", min_value=0, value=tmpl.default_follow_up_days or 0)
+                    e_description = st.text_area("Beschreibung", value=tmpl.description or "")
+                    product_options = {0: "— Kein Produkt —"} | {p.id: p.name for p in products}
+                    e_product_id = st.selectbox(
+                        "Produkt", options=list(product_options.keys()),
+                        index=list(product_options.keys()).index(tmpl.product_id if tmpl.product_id else 0),
+                        format_func=lambda x: product_options[x],
+                    )
                     if st.form_submit_button("💾 Speichern"):
-                        tmpl.name = e_name; tmpl.icon = e_icon
-                        tmpl.interval_days = e_interval; tmpl.pool_type = e_pool_type
+                        tmpl.name = e_name
+                        tmpl.icon = e_icon
+                        tmpl.category = e_category
+                        tmpl.interval_days = e_interval
+                        tmpl.pool_type = e_pool_type
+                        tmpl.default_follow_up_days = e_follow_up
+                        tmpl.description = e_description
+                        tmpl.product_id = e_product_id if e_product_id > 0 else None
                         session.commit()
                         st.session_state[edit_key] = False
                         st.success("Gespeichert!")
@@ -290,6 +322,7 @@ with tab2:
                 ptd = defaults.get(tmpl.id)
                 active = ptd.active if ptd else True
                 key = f"pool_{pool.id}_tmpl_{tmpl.id}"
-                if st.checkbox(f"{tmpl.icon or '📋'} {tmpl.name}", value=active, key=key) != active:
-                    set_pool_template_active(session, pool.id, tmpl.id, not active)
+                new_active = st.checkbox(f"{tmpl.icon or '📋'} {tmpl.name}", value=active, key=key)
+                if new_active != active:
+                    set_pool_template_active(session, pool.id, tmpl.id, new_active)
                     st.rerun()
