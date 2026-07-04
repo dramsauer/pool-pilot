@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Optional
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker, Session
-from database.models import Base, Pool, Trinkwasser, Product, Reading, Instrument, TaskTemplate, PoolTaskDefault
+from database.models import Base, Pool, Trinkwasser, Product, Reading, Instrument, TaskTemplate, PoolTaskDefault, MaintenanceTask
 
 
 DB_PATH = Path(__file__).parent.parent / "data" / "pool.db"
