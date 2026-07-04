@@ -271,6 +271,9 @@ with tab2:
                     session.query(MaintenanceTask).filter(
                         MaintenanceTask.template_id == tmpl.id
                     ).update({MaintenanceTask.template_id: None})
+                    session.query(PoolTaskDefault).filter(
+                        PoolTaskDefault.template_id == tmpl.id
+                    ).delete()
                     session.delete(tmpl)
                     session.commit()
                     st.session_state[del_key] = False
@@ -320,7 +323,7 @@ with tab2:
             defaults = {ptd.template_id: ptd for ptd in get_pool_task_defaults(session, pool.id)}
             for tmpl in all_templates:
                 ptd = defaults.get(tmpl.id)
-                active = ptd.active if ptd else True
+                active = ptd.active if ptd else False
                 key = f"pool_{pool.id}_tmpl_{tmpl.id}"
                 new_active = st.checkbox(f"{tmpl.icon or '📋'} {tmpl.name}", value=active, key=key)
                 if new_active != active:
