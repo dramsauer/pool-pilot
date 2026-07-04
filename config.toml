@@ -66,3 +66,19 @@ temperature_default = 35
   can_measure_salt = true
   can_measure_oxygen = true
   notes = "8 Parameter: pH, Chlor, Brom, Alk, Härte, CYA, O₂, Salz"
+
+[task_defaults]
+templates = [
+  { name = "Hygiene-Messung (pH/Chlor)", category = "chemie", interval_days = 7, pool_type = "all", icon = "🧪" },
+  { name = "Vollanalyse (alle Werte)", category = "chemie", interval_days = 14, pool_type = "all", icon = "📊" },
+  { name = "Chlor Tablette zugeben", category = "chemie", interval_days = 7, pool_type = "chlorine", icon = "💊", product_name = "Summer Fun Perfect Care Tabs 20g" },
+  { name = "Schockchlorung", category = "chemie", interval_days = 28, pool_type = "chlorine", icon = "⚡" },
+  { name = "Filter rückspülen", category = "technik", interval_days = 14, pool_type = "all", icon = "🔄" },
+  { name = "Filterpatrone reinigen", category = "technik", interval_days = 7, pool_type = "all", icon = "🧽" },
+  { name = "Pumpenvorsieb reinigen", category = "technik", interval_days = 7, pool_type = "all", icon = "🔧" },
+  { name = "Skimmer reinigen", category = "reinigung", interval_days = 7, pool_type = "all", icon = "🧹" },
+  { name = "Poolboden saugen", category = "reinigung", interval_days = 14, pool_type = "all", icon = "🫧" },
+  { name = "Abdeckung reinigen", category = "reinigung", interval_days = 14, pool_type = "all", icon = "🛡️" },
+  { name = "Wasserstand prüfen", category = "allgemein", interval_days = 7, pool_type = "all", icon = "📏" },
+  { name = "Wasserwechsel (Teilweise)", category = "allgemein", interval_days = 28, pool_type = "all", icon = "💧" },
+]
