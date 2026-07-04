@@ -43,7 +43,9 @@ with tab1:
     st.subheader("⚡ Schnell-Aufgabe")
     templates_to_show = get_active_templates_for_pool(session, pool_filter) if pool_filter else []
     if not pool_filter and pools:
-        templates_to_show = get_active_templates_for_pool(session, pools[0].id)
+        templates_to_show = get_active_templates_for_pool(session, pools[0].id) if pools else []
+    # ponytail: exclude measurement reminders from quick-add (they're in task list/calendar only)
+    templates_to_show = [t for t in templates_to_show if "Messung" not in t.name]
 
     if templates_to_show:
         categories = {}
@@ -206,9 +208,9 @@ with tab2:
     st.subheader("📋 Vorlagen verwalten")
     all_templates = get_task_templates(session)
     cat_labels = {"chemie": "🧪 Chemie", "technik": "🔧 Technik", "reinigung": "🧹 Reinigung", "allgemein": "📋 Allgemein"}
-
     products = session.query(Product).order_by(Product.name).all()
 
+    # New template
     with st.expander("➕ Neue Vorlage", expanded=False):
         with st.form("new_template"):
             t_name = st.text_input("Name", placeholder="z.B. Filter rückspülen")
@@ -238,85 +240,76 @@ with tab2:
 
     st.divider()
 
-    cat_order = ["chemie", "technik", "reinigung", "allgemein"]
-    for cat in cat_order:
-        cat_templates = [t for t in all_templates if (t.category or "allgemein") == cat]
-        if not cat_templates:
-            continue
-        st.markdown(f"**{cat_labels.get(cat, cat)}**")
-        for tmpl in cat_templates:
-            cols = st.columns([1, 3, 1, 1])
-            with cols[0]:
-                st.write(tmpl.icon or "📋")
-            with cols[1]:
-                st.write(f"**{tmpl.name}**")
-                details = f"Alle {tmpl.interval_days} Tage" if tmpl.interval_days else "Einmalig"
-                if tmpl.product_name:
-                    details += f" · {tmpl.product_name}"
-                st.caption(details)
-            with cols[2]:
-                st.write(f"`{tmpl.pool_type or 'all'}`")
+    # Table
+    if all_templates:
+        import pandas as pd
+        df = pd.DataFrame([{
+            "": t.icon or "📋",
+            "Name": t.name,
+            "Kategorie": cat_labels.get(t.category or "allgemein", t.category or ""),
+            "Intervall": f"Alle {t.interval_days} Tage" if t.interval_days else "Einmalig",
+            "Pool-Typ": t.pool_type or "all",
+            "Produkt": t.product_name or "—",
+        } for t in all_templates])
+        st.dataframe(df, use_container_width=True, hide_index=True, column_config={
+            "": st.column_config.TextColumn("", width="small"),
+            "Name": st.column_config.TextColumn("Name", width="medium"),
+        })
 
-            edit_key = f"edit_{tmpl.id}"
-            if st.button("✏️", key=f"edit_btn_{tmpl.id}", help="Bearbeiten"):
-                st.session_state[edit_key] = not st.session_state.get(edit_key, False)
+        # Edit/delete
+        tmpl_options = {t.id: f"{t.icon or '📋'} {t.name}" for t in all_templates}
+        sel_id = st.selectbox("Vorlage bearbeiten/löschen", options=list(tmpl_options.keys()), format_func=lambda x: tmpl_options[x], key="tmpl_selector")
+        tmpl = session.query(TaskTemplate).filter(TaskTemplate.id == sel_id).first()
 
-            del_key = f"del_{tmpl.id}"
-            if st.button("🗑️", key=f"del_btn_{tmpl.id}", help="Löschen"):
-                st.session_state[del_key] = True
+        if tmpl:
+            col_a, col_b, _ = st.columns([1, 1, 4])
+            with col_a:
+                if st.button("✏️ Bearbeiten", key="edit_selected", use_container_width=True):
+                    st.session_state["edit_selected_tmpl"] = not st.session_state.get("edit_selected_tmpl", False)
+            with col_b:
+                if st.button("🗑️ Löschen", key="del_selected", use_container_width=True):
+                    st.session_state["del_selected_tmpl"] = True
 
-            if st.session_state.get(del_key, False):
-                st.warning(f"Vorlage '{tmpl.name}' wirklich löschen?")
-                if st.button("Ja, löschen", key=f"confirm_del_{tmpl.id}"):
-                    session.query(MaintenanceTask).filter(
-                        MaintenanceTask.template_id == tmpl.id
-                    ).update({MaintenanceTask.template_id: None})
-                    session.query(PoolTaskDefault).filter(
-                        PoolTaskDefault.template_id == tmpl.id
-                    ).delete()
+            if st.session_state.get("del_selected_tmpl", False):
+                st.warning(f"'{tmpl.name}' wirklich löschen?")
+                if st.button("Ja, löschen", key="confirm_del_sel"):
+                    session.query(MaintenanceTask).filter(MaintenanceTask.template_id == tmpl.id).update({MaintenanceTask.template_id: None})
+                    session.query(PoolTaskDefault).filter(PoolTaskDefault.template_id == tmpl.id).delete()
                     session.delete(tmpl)
                     session.commit()
-                    st.session_state[del_key] = False
+                    st.session_state["del_selected_tmpl"] = False
+                    st.success("Gelöscht!")
                     st.rerun()
-                if st.button("Abbrechen", key=f"cancel_del_{tmpl.id}"):
-                    st.session_state[del_key] = False
+                if st.button("Abbrechen", key="cancel_del_sel"):
+                    st.session_state["del_selected_tmpl"] = False
                     st.rerun()
 
-            if st.session_state.get(edit_key, False):
-                with st.form(key=f"edit_form_{tmpl.id}"):
+            if st.session_state.get("edit_selected_tmpl", False):
+                with st.form("edit_template"):
                     e_name = st.text_input("Name", value=tmpl.name)
                     e_icon = st.text_input("Icon", value=tmpl.icon or "📋", max_chars=5)
-                    e_category = st.selectbox(
-                        "Kategorie", options=["chemie", "technik", "reinigung", "allgemein"],
-                        index=["chemie", "technik", "reinigung", "allgemein"].index(tmpl.category or "allgemein"),
-                        format_func=lambda x: cat_labels.get(x, x),
-                    )
+                    e_category = st.selectbox("Kategorie", options=["chemie", "technik", "reinigung", "allgemein"], index=["chemie", "technik", "reinigung", "allgemein"].index(tmpl.category or "allgemein"), format_func=lambda x: cat_labels.get(x, x))
                     e_interval = st.number_input("Intervall (Tage)", min_value=0, value=tmpl.interval_days or 7)
                     e_pool_type = st.selectbox("Pool-Typ", options=["all", "chlorine", "bromine"], index=["all", "chlorine", "bromine"].index(tmpl.pool_type or "all"))
                     e_follow_up = st.number_input("Folgeaufgabe (Tage)", min_value=0, value=tmpl.default_follow_up_days or 0)
                     e_description = st.text_area("Beschreibung", value=tmpl.description or "")
                     product_options = {0: "— Kein Produkt —"} | {p.id: p.name for p in products}
-                    e_product_id = st.selectbox(
-                        "Produkt", options=list(product_options.keys()),
-                        index=list(product_options.keys()).index(tmpl.product_id if tmpl.product_id else 0),
-                        format_func=lambda x: product_options[x],
-                    )
+                    e_product_id = st.selectbox("Produkt", options=list(product_options.keys()), index=list(product_options.keys()).index(tmpl.product_id if tmpl.product_id else 0), format_func=lambda x: product_options[x])
                     if st.form_submit_button("💾 Speichern"):
-                        tmpl.name = e_name
-                        tmpl.icon = e_icon
-                        tmpl.category = e_category
-                        tmpl.interval_days = e_interval
-                        tmpl.pool_type = e_pool_type
-                        tmpl.default_follow_up_days = e_follow_up
-                        tmpl.description = e_description
+                        tmpl.name = e_name; tmpl.icon = e_icon; tmpl.category = e_category
+                        tmpl.interval_days = e_interval; tmpl.pool_type = e_pool_type
+                        tmpl.default_follow_up_days = e_follow_up; tmpl.description = e_description
                         tmpl.product_id = e_product_id if e_product_id > 0 else None
                         session.commit()
-                        st.session_state[edit_key] = False
+                        st.session_state["edit_selected_tmpl"] = False
                         st.success("Gespeichert!")
                         st.rerun()
+    else:
+        st.info("Noch keine Vorlagen angelegt.")
 
     st.divider()
 
+    # Per-pool activation
     st.subheader("🔘 Pro-Pool Aktivierung")
     for pool in pools:
         with st.expander(f"🏊 {pool.name}", expanded=False):
