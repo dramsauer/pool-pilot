@@ -13,6 +13,7 @@ dependencies = [
     "plotly>=5.20",
     "pillow>=10.0",
     "pandas>=2.1",
+    "streamlit-calendar>=1.0",
 ]
 
 [project.optional-dependencies]
