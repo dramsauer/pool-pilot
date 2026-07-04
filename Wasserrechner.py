@@ -425,9 +425,6 @@ if st.button("\U0001f4be Messung speichern", type="primary", use_container_width
                 interval_days=pool.auto_measurement_task_days,
                 pool_id=pool_id,
             )
-    if "executed_actions" in st.session_state:
-        del st.session_state.executed_actions
-
 if st.session_state.last_dosing:
     with st.expander("Letzte gespeicherte Messung"):
         st.json(
@@ -457,9 +454,6 @@ if st.session_state.show_results:
         has_kalk_issue = consensus_score < -0.3 or consensus_score > 0.3
         all_ok = ph_ok and chl_ok and alk_ok and hard_ok and not has_kalk_issue
 
-        if "done_list" not in st.session_state:
-            st.session_state.done_list = set()
-
         if all_ok:
             st.success("\u2705 Alles im grünen Bereich — keine Maßnahmen nötig.")
         else:
@@ -482,11 +476,8 @@ if st.session_state.show_results:
             st.caption(" | ".join(order_steps) if order_steps else "")
 
             for d in dosing:
-                done_key = f"done_{d.product}"
-                is_done = done_key in st.session_state.done_list
-
                 with st.container(border=True):
-                    cols = st.columns([2, 1, 1])
+                    cols = st.columns([2, 1])
                     with cols[0]:
                         badge = {1: "\U0001f534", 2: "\U0001f7e0", 3: "\U0001f7e1", 4: "\U0001f535", 5: "\u26aa"}.get(d.priority, "\u26aa")
                         st.markdown(f"**{badge} {d.product}**")
@@ -515,61 +506,7 @@ if st.session_state.show_results:
                                 "notes": "",
                             }
                             st.rerun()
-                    with cols[2]:
-                        if is_done:
-                            st.success("\u2705 Erledigt")
-                        else:
-                            st.markdown(f"<br>", unsafe_allow_html=True)
-                            if st.button(
-                                "\u2705 Erledigt", key=f"done_{d.product}",
-                                use_container_width=True, type="primary",
-                            ):
-                                task_data = {
-                                    "date": datetime.date.today().isoformat(),
-                                    "time": datetime.datetime.now().strftime("%H:%M"),
-                                    "product": d.product,
-                                    "amount": d.amount,
-                                    "unit": d.unit,
-                                    "reason": d.reason,
-                                }
-                                if "executed_actions" not in st.session_state:
-                                    st.session_state.executed_actions = []
-                                st.session_state.executed_actions.append(task_data)
-                                st.session_state.done_list.add(done_key)
-                                if d.follow_up_days > 0:
-                                    save_task(
-                                        session,
-                                        task_type="nachkontrolle",
-                                        title=f"{d.product} – Nachkontrolle",
-                                        description=(
-                                            f"Folgeaufgabe in {d.follow_up_days} Tagen "
-                                            f"(auto. {datetime.date.today().isoformat()})"
-                                        ),
-                                        due_date=datetime.date.today()
-                                        + datetime.timedelta(days=d.follow_up_days),
-                                        interval_days=d.follow_up_days,
-                                        product_id=getattr(d, 'product_id', None),
-                                        product_name=d.product,
-                                        recommended_amount=d.amount,
-                                        recommended_unit=d.unit,
-                                    )
-                                st.rerun()
 
-                    if is_done:
-                        with st.expander("\U0001f4dd Details zur Ausführung", expanded=False):
-                            st.text_input(
-                                "Was genau wurde gemacht?",
-                                placeholder=f"z. B. {d.amount:g} {d.unit} in Wasser gelöst und zugegeben",
-                                key=f"exec_note_{d.product}",
-                            )
-
-        all_done = all(
-            f"done_{d.product}" in st.session_state.done_list
-            for d in dosing
-        ) if dosing else True
-
-        if dosing and all_done and not all_ok:
-            st.success("\U0001f3af Alle Maßnahmen als erledigt markiert! Nach Einwirkzeit neu testen.")
 
     with tab_hygiene:
         col_ph_gauge, col_chlor_gauge = st.columns(2)
