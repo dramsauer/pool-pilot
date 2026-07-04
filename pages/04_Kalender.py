@@ -6,7 +6,7 @@ from database.models import MaintenanceTask
 from utils.theme import inject_theme
 from utils.nav import render_sidebar
 from database.repository import (
-    get_pools, get_tasks_by_date_range,
+    get_pools, get_products, get_tasks_by_date_range,
     complete_task_with_notes,
     ensure_template_instances,
 )
@@ -21,6 +21,7 @@ init_db(engine)
 session = get_session(engine)
 
 pools = get_pools(session)
+products = get_products(session)
 render_sidebar(pools)
 
 st.title("📅 Aufgaben-Kalender")
@@ -35,6 +36,20 @@ with st.expander("📝 Aufgabe nachtragen"):
         )
         retro_title = st.text_input("Titel", placeholder="z.B. ½ Chlor-Tablette zugegeben")
         retro_date = st.date_input("Datum", value=datetime.date.today())
+        retro_product = st.selectbox(
+            "Produkt", options=[None] + products,
+            format_func=lambda p: "Kein Produkt" if p is None else f"{p.name} ({p.typ})",
+            key="retro_product",
+        )
+        retro_amount = None
+        retro_unit = None
+        if retro_product is not None and retro_product.dosage_factor > 0:
+            default_amount = round(retro_product.dosage_factor * retro_pool.volume_liter / 1000, 1)
+            col_amt, col_unit = st.columns([2, 1])
+            with col_amt:
+                retro_amount = st.number_input("Menge", value=default_amount, step=0.1, format="%.1f")
+            with col_unit:
+                retro_unit = st.text_input("Einheit", value=retro_product.unit)
         retro_done = st.checkbox("Bereits erledigt", value=True)
         retro_notes = st.text_area("Notiz (optional)", placeholder="Details…")
         if st.form_submit_button("💾 Aufgabe eintragen"):
@@ -48,6 +63,10 @@ with st.expander("📝 Aufgabe nachtragen"):
                     completed=retro_done,
                     completed_at=datetime.datetime.combine(retro_date, datetime.time(12, 0)) if retro_done else None,
                     executed_notes=retro_notes,
+                    product_id=retro_product.id if retro_product else None,
+                    product_name=retro_product.name if retro_product else None,
+                    recommended_amount=retro_amount,
+                    recommended_unit=retro_unit,
                 )
                 session.add(task)
                 session.commit()
