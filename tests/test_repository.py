@@ -30,6 +30,8 @@ from database.repository import (
     get_pool_task_defaults,
     ensure_template_instances,
     activate_defaults_for_pool,
+    update_task,
+    delete_task,
 )
 from database.models import TaskTemplate, PoolTaskDefault, MaintenanceTask
 
@@ -324,4 +326,29 @@ def test_ensure_template_instances_snaps_to_preferred_weekday():
     # All instances should fall on a Friday (weekday=4)
     for inst in instances:
         assert inst.due_date.weekday() == 4, f"{inst.due_date} is not a Friday"
+    session.close()
+
+
+def test_update_task():
+    session = setup()
+    task = save_task(
+        session, task_type="test", title="Original",
+        due_date=datetime.date(2026, 7, 1),
+    )
+    updated = update_task(session, task.id, title="Geändert", due_date=datetime.date(2026, 7, 4))
+    assert updated.title == "Geändert"
+    assert updated.due_date == datetime.date(2026, 7, 4)
+    session.close()
+
+
+def test_delete_task():
+    session = setup()
+    task = save_task(
+        session, task_type="test", title="Zu löschen",
+        due_date=datetime.date.today(),
+    )
+    task_id = task.id
+    delete_task(session, task_id)
+    deleted = session.query(MaintenanceTask).filter(MaintenanceTask.id == task_id).first()
+    assert deleted is None
     session.close()

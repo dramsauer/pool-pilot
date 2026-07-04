@@ -674,3 +674,21 @@ def activate_defaults_for_pool(session: Session, pool_id: int) -> None:
                 pool_id=pool.id, template_id=tmpl.id, active=True,
             ))
     session.commit()
+
+
+def update_task(session: Session, task_id: int, **kwargs) -> MaintenanceTask | None:
+    task = session.query(MaintenanceTask).filter(MaintenanceTask.id == task_id).first()
+    if task:
+        for key, value in kwargs.items():
+            if hasattr(task, key):
+                setattr(task, key, value)
+        session.commit()
+        session.refresh(task)
+    return task
+
+
+def delete_task(session: Session, task_id: int) -> None:
+    task = session.query(MaintenanceTask).filter(MaintenanceTask.id == task_id).first()
+    if task:
+        session.delete(task)
+        session.commit()
