@@ -471,7 +471,7 @@ def get_tasks_by_date_range(
 
 
 def get_task_templates(session: Session) -> list[TaskTemplate]:
-    return session.query(TaskTemplate).order_by(TaskTemplate.category, TaskTemplate.name).all()
+    return session.query(TaskTemplate).order_by(TaskTemplate.sort_order).all()
 
 
 def get_active_templates_for_pool(session: Session, pool_id: int) -> list[TaskTemplate]:
@@ -482,7 +482,7 @@ def get_active_templates_for_pool(session: Session, pool_id: int) -> list[TaskTe
             PoolTaskDefault.pool_id == pool_id,
             PoolTaskDefault.active.is_(True),
         )
-        .order_by(TaskTemplate.category, TaskTemplate.name)
+        .order_by(TaskTemplate.sort_order)
         .all()
     )
 

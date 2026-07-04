@@ -108,6 +108,7 @@ def _migrate_schema(session: Session):
         existing_tmpl = {c["name"] for c in inspector.get_columns("task_templates")}
         for col, t in [
             ("preferred_weekday", "INTEGER"),
+            ("sort_order", "INTEGER DEFAULT 0"),
         ]:
             if col not in existing_tmpl:
                 session.execute(text(f"ALTER TABLE task_templates ADD COLUMN {col} {t}"))
@@ -224,7 +225,7 @@ def _seed_task_templates(session: Session):
     config_names = {t["name"] for t in config_templates}
 
     # Upsert all config templates
-    for tmpl_data in config_templates:
+    for idx, tmpl_data in enumerate(config_templates):
         existing = session.query(TaskTemplate).filter(
             TaskTemplate.name == tmpl_data["name"]
         ).first()
@@ -245,6 +246,7 @@ def _seed_task_templates(session: Session):
             preferred_weekday=tmpl_data.get("preferred_weekday"),
             product_name=product_name,
             product_id=product_id,
+            sort_order=idx,
         )
         if existing:
             for k, v in vals.items():

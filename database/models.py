@@ -74,6 +74,7 @@ class TaskTemplate(Base):
     preferred_weekday = Column(Integer, nullable=True)
     product_name = Column(String(200), nullable=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
+    sort_order = Column(Integer, default=0)
 
 
 class PoolTaskDefault(Base):
