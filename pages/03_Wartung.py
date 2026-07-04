@@ -2,6 +2,7 @@ import datetime
 import streamlit as st
 from database.db import get_engine, init_db, get_session
 from utils.theme import inject_theme
+from utils.nav import render_sidebar
 from database.repository import (
     get_pools,
     get_pending_tasks,
@@ -22,20 +23,13 @@ engine = get_engine()
 init_db(engine)
 session = get_session(engine)
 
+pools = get_pools(session)
+render_sidebar(pools)
+
 st.title("✅ Aufgaben")
 
-# Pool filter
-pools = get_pools(session)
-pool_filter = None
-if len(pools) > 1:
-    pool_options = {0: "Alle Pools"} | {p.id: p.name for p in pools}
-    selected = st.selectbox(
-        "Pool filtern",
-        options=list(pool_options.keys()),
-        format_func=lambda x: pool_options[x],
-    )
-    if selected:
-        pool_filter = selected
+selected_pool_id = st.session_state.get("pool_selector", 0)
+pool_filter = None if selected_pool_id == 0 else selected_pool_id
 
 # Ensure template instances for visible window
 today = datetime.date.today()

@@ -22,6 +22,7 @@ from pool_calculations.csi import calculate_csi, categorize_csi, calculate_ccpp
 from pool_calculations.dosing import recommend_dosing_from_db
 from pool_calculations.models import WaterTest
 from utils.theme import inject_theme
+from utils.nav import render_sidebar
 
 
 def _target_gauge(value, title, axis_range, green_zone, unit=""):
@@ -47,9 +48,50 @@ def _target_gauge(value, title, axis_range, green_zone, unit=""):
     return fig
 
 
+def _cat_score(cat: str) -> float:
+    if cat in ("stark korrosiv",):
+        return -1.5
+    if cat in ("korrosiv",):
+        return -1.0
+    if cat == "ausgeglichen":
+        return 0.0
+    if cat in ("kalkend", "kalkausfällend"):
+        return 0.5
+    if cat in ("stark kalkend",):
+        return 1.5
+    return 0.0
+
+
+def _cat_arrow_color(cat: str):
+    if cat == "ausgeglichen":
+        return "\u2705", "green"
+    if "korrosiv" in cat:
+        return "\U0001f534", "red"
+    return "\U0001f7e0", "orange"
+
+
+def _driver_analysis(ph, hardness, alkalinity, csi_cat, pool):
+    issues = []
+    if csi_cat in ("stark korrosiv", "korrosiv"):
+        if pool.ph_min <= ph <= pool.ph_max:
+            issues.append(("Calciumhärte oder Alkalinität erhöhen", "härtet/alk"))
+        else:
+            issues.append(("pH in Zielbereich bringen", "ph"))
+    elif csi_cat in ("stark kalkend", "kalkend"):
+        if ph > pool.ph_max:
+            issues.append(("pH senken", "ph"))
+        elif alkalinity > pool.alkalinity_max:
+            issues.append(("Alkalinität senken", "alk"))
+        elif hardness > pool.hardness_max:
+            issues.append(("Calciumhärte senken (Teilwasserwechsel)", "härte"))
+        else:
+            issues.append(("pH oder Alkalinität prüfen", "allg"))
+    return issues[0] if issues else ("", "")
+
+
 st.set_page_config(
     page_title="PoolPilot - Dein intelligenter Pool-Helfer",
-    page_icon="🏊",
+    page_icon="\U0001f3ca",
     layout="centered",
 )
 
@@ -69,7 +111,6 @@ engine = get_engine()
 init_db(engine)
 session = get_session(engine)
 
-# Pool selector — sidebar
 pools = get_pools(session)
 if not pools:
     st.warning(
@@ -78,26 +119,13 @@ if not pools:
     st.page_link("pages/01_Poolverwaltung.py", label="→ Pools & Produkte")
     st.stop()
 
-pool_options = {p.id: f"{p.name} ({p.volume_liter} L)" for p in pools}
-with st.sidebar:
-    st.header("🏊 Pool")
-    selected_pool_id = st.selectbox(
-        "Pool auswählen",
-        options=list(pool_options.keys()),
-        format_func=lambda x: pool_options[x],
-        key="pool_selector",
-        label_visibility="collapsed",
-    )
+selected_pool_id = st.session_state.get("pool_selector")
+if selected_pool_id is None or selected_pool_id == 0:
+    selected_pool_id = pools[0].id
 pool = get_pool(session, selected_pool_id)
 
-st.sidebar.divider()
-with st.sidebar.expander("Weitere"):
-    st.page_link("pages/09_Datenverwaltung.py", label="🔐 Daten-Export/-Import")
-
-# Load products for dosing
 products = get_products(session)
 
-# Load trinkwasser defaults if linked
 tw_defaults = {"alkalinity": 100, "hardness": 200}
 if pool.trinkwasser_id:
     from database.repository import get_trinkwasser
@@ -109,12 +137,11 @@ if pool.trinkwasser_id:
             "hardness": tw.calcium_hardness_default,
         }
 
-st.title("🏊 PoolPilot")
+st.title("\U0001f3ca PoolPilot")
 st.caption(f"{pool.name} · {pool.volume_liter} Liter · {pool.pool_type} — Weil planschen im grünen Wasser keinen Spaß macht")
 
 st.divider()
 
-# Initialize session state
 if "last_dosing" not in st.session_state:
     st.session_state.last_dosing = []
 if "task_created" not in st.session_state:
@@ -122,33 +149,22 @@ if "task_created" not in st.session_state:
 if "show_results" not in st.session_state:
     st.session_state.show_results = False
 
-# Step 1: Measurement input with live calculation
 col_title, col_inst = st.columns([1, 1])
 with col_title:
-    st.markdown("### 1️⃣ Messwerte erfassen")
+    st.markdown("### 1\uFE0F\u20E3 Messwerte erfassen")
 
 help_texts = {
-    "ph": "pH-Wert (Teststreifen 6,8–8,2). "
-    "Ziel: 7,2–7,6. Beeinflusst Chlorwirkung und Wasserbalance.",
-    "chlorine": "Freies Chlor in mg/L (Teststreifen 0,0–5,0). "
-    "Ziel: 0,5–3,0 mg/L.",
-    "temp": "Wassertemperatur in °C (separate Messung, z. B. Thermometer). "
-    "Beeinflusst CSI/LSI/RSI direkt.",
-    "alk": "Gesamtalkalinität (Teststreifen 0–240 mg/L CaCO₃). "
-    "Pufferkapazität gegen pH-Schwankungen. "
-    "Trinkwasser-Default: {} mg/L".format(tw_defaults["alkalinity"]),
-    "hard": "Gesamthärte (Teststreifen 0–1000 mg/L CaCO₃). "
-    "Wird als Calciumhärte für CSI/LSI genutzt. "
-    "Trinkwasser-Default: {} mg/L".format(tw_defaults["hardness"]),
-    "cya": "Cyanursäure / Stabilisator (Teststreifen 0–150 mg/L). "
-    "Schützt Chlor vor UV-Abbau. Verfälscht Alkalinitätsmessung.",
-    "salt": "Salzgehalt / TDS (Teststreifen 0–8000 mg/L NaCl). "
-    "Relevant für CSI-Berechnung. Salzpool: ~3000–4000 mg/L.",
+    "ph": "pH-Wert (Teststreifen 6,8–8,2). Ziel: 7,2–7,6. Beeinflusst Chlorwirkung und Wasserbalance.",
+    "chlorine": "Freies Chlor in mg/L (Teststreifen 0,0–5,0). Ziel: 0,5–3,0 mg/L.",
+    "temp": "Wassertemperatur in °C (separate Messung, z. B. Thermometer). Beeinflusst CSI/LSI/RSI direkt.",
+    "alk": "Gesamtalkalinität (Teststreifen 0–240 mg/L CaCO₃). Pufferkapazität gegen pH-Schwankungen. Trinkwasser-Default: {} mg/L".format(tw_defaults["alkalinity"]),
+    "hard": "Gesamthärte (Teststreifen 0–1000 mg/L CaCO₃). Wird als Calciumhärte für CSI/LSI genutzt. Trinkwasser-Default: {} mg/L".format(tw_defaults["hardness"]),
+    "cya": "Cyanursäure / Stabilisator (Teststreifen 0–150 mg/L). Schützt Chlor vor UV-Abbau. Verfälscht Alkalinitätsmessung.",
+    "salt": "Salzgehalt / TDS (Teststreifen 0–8000 mg/L NaCl). Relevant für CSI-Berechnung. Salzpool: ~3000–4000 mg/L.",
 }
 
 default_tds = 3000 if pool.pool_type == "salt" else 500
 
-# Instrument selector — placed beside the section title
 with col_inst:
     all_instruments = get_instruments(session)
     inst_options = {0: "Alle Parameter"} | {i.id: i.name for i in all_instruments}
@@ -168,7 +184,6 @@ with col_inst:
 instrument = get_instrument(session, selected_inst_id) if selected_inst_id else None
 instrument_name = instrument.name if instrument else "Teststreifen (alle Parameter)"
 
-# Determine which params the instrument can measure (or all if no instrument)
 cap = {
     "ph": True,
     "chlorine": True,
@@ -187,7 +202,6 @@ if instrument:
         "salt": instrument.can_measure_salt,
     }
 
-# Default slider values (fallback when a param is read-only)
 def_val = {
     "ph": 7.4,
     "chlorine": 1.5,
@@ -197,7 +211,7 @@ def_val = {
     "salt": default_tds,
 }
 
-st.markdown(f"#### 🧪 {instrument_name}")
+st.markdown(f"#### \U0001f9ea {instrument_name}")
 col1, col2 = st.columns(2)
 with col1:
     if cap["ph"]:
@@ -236,7 +250,7 @@ with col2:
         tds = default_tds
         st.metric("Salzgehalt / TDS (aus Trinkwasser)", f"{tds} mg/L NaCl")
 
-st.markdown("#### 🌡️ Separate Messung")
+st.markdown("#### \U0001f321\uFE0F Separate Messung")
 col_temp, col_water = st.columns(2)
 with col_temp:
     temperature = st.slider(
@@ -261,11 +275,11 @@ with col_water:
         pct = lambda v: v / hi * 100
         st.markdown(f"""
 <div style="display:flex;align-items:center;gap:4px;margin:-14px 0 16px;font-size:11px;color:#555">
-    <span>▲ {hi}</span>
-    <div style="flex:1;height:8px;background:linear-gradient(to right,#e0e0e0 {pct(min_cm)}%,#81c784 {pct(min_cm)}%,#81c784 {pct(max_cm)}%,#e0e0e0 {pct(max_cm)}%);border-radius:4px;position:relative">
-        <div style="position:absolute;left:{pct(water_level_cm)}%;top:-2px;width:2px;height:12px;background:#333;border-radius:1px"></div>
-    </div>
-    <span>▼ 0</span>
+<span>\u25b2 {hi}</span>
+<div style="flex:1;height:8px;background:linear-gradient(to right,#e0e0e0 {pct(min_cm)}%,#81c784 {pct(min_cm)}%,#81c784 {pct(max_cm)}%,#e0e0e0 {pct(max_cm)}%);border-radius:4px;position:relative">
+    <div style="position:absolute;left:{pct(water_level_cm)}%;top:-2px;width:2px;height:12px;background:#333;border-radius:1px"></div>
+</div>
+<span>\u25bc 0</span>
 </div>
 """, unsafe_allow_html=True)
         pool_shape = pool.shape or "rechteckig"
@@ -282,23 +296,23 @@ with col_water:
         st.info("Wasserstand: Min/Max in Pool-Einstellungen hinterlegen.")
 
 notes = st.text_input(
-    "📝 Notizen (optional)", placeholder="z. B. Wetter, Wasserstand..."
+    "\U0001f4dd Notizen (optional)", placeholder="z. B. Wetter, Wasserstand..."
 )
 
-st.markdown("#### 📸 Foto")
+st.markdown("#### \U0001f4f8 Foto")
 photo_source = st.radio(
     "Foto-Quelle",
-    ["📁 Hochladen", "📸 Kamera"],
+    ["\U0001f4c1 Hochladen", "\U0001f4f8 Kamera"],
     horizontal=True,
     label_visibility="collapsed",
 )
 uploaded_file = None
 camera_file = None
-if photo_source == "📸 Kamera":
-    camera_file = st.camera_input("📸 Mit Kamera aufnehmen")
+if photo_source == "\U0001f4f8 Kamera":
+    camera_file = st.camera_input("\U0001f4f8 Mit Kamera aufnehmen")
 else:
     uploaded_file = st.file_uploader(
-        "📁 Vom Gerät hochladen", type=["jpg", "jpeg", "png"]
+        "\U0001f4c1 Vom Gerät hochladen", type=["jpg", "jpeg", "png"]
     )
 
 photo_path = None
@@ -322,7 +336,6 @@ elif uploaded_file:
     img.save(photo_path)
     st.image(photo_data, caption="Hochgeladenes Foto", width=300)
 
-# Live calculation
 lsi = calculate_lsi(ph, temperature, hardness, alkalinity, cya=cya, tds=tds)
 rsi = calculate_rsi(ph, temperature, hardness, alkalinity)
 csi = calculate_csi(ph, temperature, hardness, alkalinity, cya=cya, tds=tds)
@@ -340,8 +353,7 @@ test = WaterTest(
 )
 dosing = recommend_dosing_from_db(test, pool, products)
 
-# Save button
-if st.button("💾 Messung speichern", type="primary", use_container_width=True):
+if st.button("\U0001f4be Messung speichern", type="primary", use_container_width=True):
     dosing_data = (
         [
             {
@@ -394,11 +406,10 @@ if st.button("💾 Messung speichern", type="primary", use_container_width=True)
                 recommended_unit=d.unit,
             )
 
-    st.success("✅ Messung gespeichert!")
+    st.success("\u2705 Messung gespeichert!")
     st.session_state.show_results = True
     st.session_state.last_dosing = dosing
     st.session_state.task_created = False
-    # Auto-create measurement follow-up task
     pool_id = st.session_state.get("selected_pool_id")
     if pool_id:
         pool = get_pool(session, pool_id)
@@ -416,7 +427,6 @@ if st.button("💾 Messung speichern", type="primary", use_container_width=True)
     if "executed_actions" in st.session_state:
         del st.session_state.executed_actions
 
-# Show last saved result
 if st.session_state.last_dosing:
     with st.expander("Letzte gespeicherte Messung"):
         st.json(
@@ -433,54 +443,9 @@ if st.session_state.last_dosing:
 
 st.divider()
 
-def _cat_score(cat: str) -> float:
-    if cat in ("stark korrosiv",):
-        return -1.5
-    if cat in ("korrosiv",):
-        return -1.0
-    if cat == "ausgeglichen":
-        return 0.0
-    if cat in ("kalkend", "kalkausfällend"):
-        return 0.5
-    if cat in ("stark kalkend",):
-        return 1.5
-    return 0.0
-
-
-def _cat_arrow_color(cat: str):
-    if cat == "ausgeglichen":
-        return "✅", "green"
-    if "korrosiv" in cat:
-        return "🔴", "red"
-    return "🟠", "orange"
-
-
-def _driver_analysis(ph, hardness, alkalinity, csi_cat, pool):
-    """Identify the primary parameter driving imbalance."""
-    issues = []
-    if csi_cat in ("stark korrosiv", "korrosiv"):
-        if pool.ph_min <= ph <= pool.ph_max:
-            issues.append(("Calciumhärte oder Alkalinität erhöhen", "härtet/alk"))
-        else:
-            issues.append(("pH in Zielbereich bringen", "ph"))
-    elif csi_cat in ("stark kalkend", "kalkend"):
-        if ph > pool.ph_max:
-            issues.append(("pH senken", "ph"))
-        elif alkalinity > pool.alkalinity_max:
-            issues.append(("Alkalinität senken", "alk"))
-        elif hardness > pool.hardness_max:
-            issues.append(("Calciumhärte senken (Teilwasserwechsel)", "härte"))
-        else:
-            issues.append(("pH oder Alkalinität prüfen", "allg"))
-    return issues[0] if issues else ("", "")
-
-
-
-
-
 if st.session_state.show_results:
-    st.subheader("2️⃣ Schlussfolgerungen")
-    tab_dosis, tab_hygiene, tab_kalk = st.tabs(["💊 Dosierempfehlung", "🧼 Hygiene", "⚖️ Kalk-Korrosion"])
+    st.subheader("2\uFE0F\u20E3 Schlussfolgerungen")
+    tab_dosis, tab_hygiene, tab_kalk = st.tabs(["\U0001f48a Dosierempfehlung", "\U0001f9fc Hygiene", "\u2696\uFE0F Kalk-Korrosion"])
 
     with tab_dosis:
         ph_ok = pool.ph_min <= ph <= pool.ph_max
@@ -494,27 +459,25 @@ if st.session_state.show_results:
         if "done_list" not in st.session_state:
             st.session_state.done_list = set()
 
-        _PRIORITY_LABELS = {1: "1. Alkalinität", 2: "2. pH", 3: "3. Härte", 4: "4. Chlor", 5: "5. Balance"}
-
         if all_ok:
-            st.success("✅ Alles im grünen Bereich — keine Maßnahmen nötig.")
+            st.success("\u2705 Alles im grünen Bereich — keine Maßnahmen nötig.")
         else:
             issue_count = sum([not ph_ok, not chl_ok, not alk_ok, not hard_ok, has_kalk_issue])
             worst = "kritisch" if consensus_score < -0.5 or consensus_score > 0.5 else "erhöht"
-            st.warning(f"⚡ **{issue_count} Handlungsfeld{'er' if issue_count > 1 else ''}** — Zustand {worst}")
+            st.warning(f"\u26a1 **{issue_count} Handlungsfeld{'er' if issue_count > 1 else ''}** — Zustand {worst}")
 
             order_steps = []
             if not alk_ok:
-                order_steps.append("1️⃣ Alkalinität (Puffer für pH)")
+                order_steps.append("1\uFE0F\u20E3 Alkalinität (Puffer für pH)")
             if not ph_ok:
-                order_steps.append("2️⃣ pH-Wert")
+                order_steps.append("2\uFE0F\u20E3 pH-Wert")
             if not hard_ok:
-                order_steps.append("3️⃣ Calciumhärte")
+                order_steps.append("3\uFE0F\u20E3 Calciumhärte")
             if has_kalk_issue:
-                direction = "korrosiv 🔴" if consensus_score < -0.3 else "kalkend 🟠"
-                order_steps.append(f"4️⃣ Kalk-Korrosion ({direction})")
+                direction = "korrosiv \U0001f534" if consensus_score < -0.3 else "kalkend \U0001f7e0"
+                order_steps.append(f"4\uFE0F\u20E3 Kalk-Korrosion ({direction})")
             if not chl_ok:
-                order_steps.append("5️⃣ Chlor (Desinfektion)")
+                order_steps.append("5\uFE0F\u20E3 Chlor (Desinfektion)")
             st.caption(" | ".join(order_steps) if order_steps else "")
 
             for d in dosing:
@@ -524,18 +487,18 @@ if st.session_state.show_results:
                 with st.container(border=True):
                     cols = st.columns([2, 1, 1])
                     with cols[0]:
-                        badge = {1: "🔴", 2: "🟠", 3: "🟡", 4: "🔵", 5: "⚪"}.get(d.priority, "⚪")
+                        badge = {1: "\U0001f534", 2: "\U0001f7e0", 3: "\U0001f7e1", 4: "\U0001f535", 5: "\u26aa"}.get(d.priority, "\u26aa")
                         st.markdown(f"**{badge} {d.product}**")
                         st.markdown(f"### {d.amount:g} {d.unit}")
                         st.caption(d.reason)
                         if d.instruction:
-                            st.markdown(f"📖 *{d.instruction}*")
+                            st.markdown(f"\U0001f4d6 *{d.instruction}*")
                         if d.wait_minutes > 0:
-                            st.caption(f"⏱ Nach Zugabe ~{d.wait_minutes} Min. warten, dann neu testen")
+                            st.caption(f"\u23f1 Nach Zugabe ~{d.wait_minutes} Min. warten, dann neu testen")
                     with cols[1]:
                         st.markdown(f"<br>", unsafe_allow_html=True)
                         if st.button(
-                            "📋 Aufgabe", key=f"task_{d.product}",
+                            "\U0001f4cb Aufgabe", key=f"task_{d.product}",
                             use_container_width=True,
                         ):
                             save_task(
@@ -550,11 +513,11 @@ if st.session_state.show_results:
                             st.rerun()
                     with cols[2]:
                         if is_done:
-                            st.success("✅ Erledigt")
+                            st.success("\u2705 Erledigt")
                         else:
                             st.markdown(f"<br>", unsafe_allow_html=True)
                             if st.button(
-                                "✅ Erledigt", key=f"done_{d.product}",
+                                "\u2705 Erledigt", key=f"done_{d.product}",
                                 use_container_width=True, type="primary",
                             ):
                                 task_data = {
@@ -589,7 +552,7 @@ if st.session_state.show_results:
                                 st.rerun()
 
                     if is_done:
-                        with st.expander("📝 Details zur Ausführung", expanded=False):
+                        with st.expander("\U0001f4dd Details zur Ausführung", expanded=False):
                             st.text_input(
                                 "Was genau wurde gemacht?",
                                 placeholder=f"z. B. {d.amount:g} {d.unit} in Wasser gelöst und zugegeben",
@@ -602,7 +565,7 @@ if st.session_state.show_results:
         ) if dosing else True
 
         if dosing and all_done and not all_ok:
-            st.success("🎯 Alle Maßnahmen als erledigt markiert! Nach Einwirkzeit neu testen.")
+            st.success("\U0001f3af Alle Maßnahmen als erledigt markiert! Nach Einwirkzeit neu testen.")
 
     with tab_hygiene:
         col_ph_gauge, col_chlor_gauge = st.columns(2)
@@ -610,12 +573,12 @@ if st.session_state.show_results:
             ph_fig = _target_gauge(ph, "pH", [6.2, 8.4], [pool.ph_min, pool.ph_max])
             st.plotly_chart(ph_fig, use_container_width=True)
             ph_ok = pool.ph_min <= ph <= pool.ph_max
-            st.metric("pH", f"{ph:.1f}", delta="✅ i.O." if ph_ok else f"⚠️ Ziel {pool.ph_min}–{pool.ph_max}")
+            st.metric("pH", f"{ph:.1f}", delta="\u2705 i.O." if ph_ok else f"\u26a0\uFE0F Ziel {pool.ph_min}–{pool.ph_max}")
         with col_chlor_gauge:
             chl_fig = _target_gauge(chlorine, "Chlor", [0.0, 10.0], [pool.chlorine_min, pool.chlorine_max], unit="mg/L")
             st.plotly_chart(chl_fig, use_container_width=True)
             chl_ok = pool.chlorine_min <= chlorine <= pool.chlorine_max
-            st.metric("Chlor", f"{chlorine:.1f} mg/L", delta="✅ i.O." if chl_ok else f"⚠️ Ziel {pool.chlorine_min}–{pool.chlorine_max} mg/L")
+            st.metric("Chlor", f"{chlorine:.1f} mg/L", delta="\u2705 i.O." if chl_ok else f"\u26a0\uFE0F Ziel {pool.chlorine_min}–{pool.chlorine_max} mg/L")
 
     with tab_kalk:
         csi_score = _cat_score(csi_cat)
@@ -625,15 +588,15 @@ if st.session_state.show_results:
 
         if consensus < -0.3:
             cons_verdict = "korrosiv"
-            cons_msg = "🔴 Wasser tendiert zu korrosiv — Oberflächen- und Metallschäden möglich"
+            cons_msg = "\U0001f534 Wasser tendiert zu korrosiv — Oberflächen- und Metallschäden möglich"
             cons_what = "Calciumhärte oder Alkalinität erhöhen, pH anheben"
         elif consensus > 0.3:
             cons_verdict = "kalkend"
-            cons_msg = "🟠 Wasser tendiert zu kalkend — Beläge und Trübungen möglich"
+            cons_msg = "\U0001f7e0 Wasser tendiert zu kalkend — Beläge und Trübungen möglich"
             cons_what = "pH oder Alkalinität senken"
         else:
             cons_verdict = "ausgeglichen"
-            cons_msg = "✅ Wasser im Kalk-Korrosion Gleichgewicht"
+            cons_msg = "\u2705 Wasser im Kalk-Korrosion Gleichgewicht"
             cons_what = ""
 
         col_csi, col_lsi, col_rsi = st.columns(3)
@@ -641,7 +604,7 @@ if st.session_state.show_results:
             csi_arr, csi_col = _cat_arrow_color(csi_cat)
             st.markdown(f"### {csi_arr} CSI: <span style='color:{csi_col}'>{csi:+.2f}</span>", unsafe_allow_html=True)
             if ccpp > 0:
-                st.caption(f"⬇️ Kalkfall: ~{ccpp} mg/L CaCO₃ möglich")
+                st.caption(f"\u2b07\uFE0F Kalkfall: ~{ccpp} mg/L CaCO₃ möglich")
         with col_lsi:
             lsi_arr, lsi_col = _cat_arrow_color(lsi_cat)
             st.markdown(f"### {lsi_arr} LSI: <span style='color:{lsi_col}'>{lsi:+.2f}</span>", unsafe_allow_html=True)
@@ -668,7 +631,7 @@ if st.session_state.show_results:
             if rsi_cat == "ausgeglichen" and cons_verdict != "ausgeglichen":
                 notes.append("RSI toleranter — optimiert für Metallschutz")
             if notes:
-                st.info("💡 " + " | ".join(notes))
+                st.info("\U0001f4a1 " + " | ".join(notes))
 
         gauge_csi, gauge_lsi, gauge_rsi = st.columns(3)
         with gauge_csi:
@@ -713,26 +676,30 @@ if st.session_state.show_results:
             rsi_fig.update_layout(height=230, margin=dict(l=20, r=20, t=60, b=20))
             st.plotly_chart(rsi_fig, use_container_width=True)
 
-        with st.expander("ℹ️ Detailwissen: CSI, LSI, RSI & Hamilton Index"):
+        with st.expander("\u2139\uFE0F Detailwissen: CSI, LSI, RSI & Hamilton Index"):
             st.markdown(f"""
         **CSI (Calcium Sättigungs-Index)** – Wojtowicz 2001 (Modernster Standard)
-        Bereich: **-0,3 bis +0,3** (ausgeglichen).  
+        Bereich: **-0,3 bis +0,3** (ausgeglichen).
         Korrigiert die Alkalinität um Cyanursäure (CYA) {f'({cya} mg/L)' if cya > 0 else ''}
-        und berücksichtigt TDS/Salzgehalt {f'({tds} mg/L)' if tds > 500 else ''}.  
+        und berücksichtigt TDS/Salzgehalt {f'({tds} mg/L)' if tds > 500 else ''}.
         *CSI ist der primäre Index für die Wasserbalance (Gewichtung 60%).*
 
-        **LSI (Langelier Sättigungs-Index)** – PHTA-Klassiker  
-        Bereich: -0,5 bis +0,5 (ausgeglichen). Vereinfachte Formel ohne CYA-Korrektur.  
+        **LSI (Langelier Sättigungs-Index)** – PHTA-Klassiker
+        Bereich: -0,5 bis +0,5 (ausgeglichen). Vereinfachte Formel ohne CYA-Korrektur.
         *Referenz für die Wasserbalance (Gewichtung 20%).*
 
-        **RSI (Ryznar Stabilitäts-Index)** – Empirisch, Fokus Metalle  
-        Bereich: **5,0–7,0** (ausgeglichen, PHTA-Standard).  
+        **RSI (Ryznar Stabilitäts-Index)** – Empirisch, Fokus Metalle
+        Bereich: **5,0–7,0** (ausgeglichen, PHTA-Standard).
         Optimiert für Korrosionsschutz von Heizern/Rohren (Gewichtung 20%).
 
-        **Hamilton Index** – Praxistabelle von Jock Hamilton (1960er)  
-        Empfiehlt pH 7,8–8,2. Nutzt Gesamthärte vs. Gesamtalkalinität.  
+        **Hamilton Index** – Praxistabelle von Jock Hamilton (1960er)
+        Empfiehlt pH 7,8–8,2. Nutzt Gesamthärte vs. Gesamtalkalinität.
         Ignoriert Temperatur, TDS, Cyanursäure.
 
-        **CCPP (Calcium Carbonate Precipitation Potential)** – Nur bei CSI > +0,3  
+        **CCPP (Calcium Carbonate Precipitation Potential)** – Nur bei CSI > +0,3
         Gibt an, wie viel mg/L CaCO₃ ausfallen könnten. Richtwert: < 10 mg/L = gering.
             """)
+
+
+
+render_sidebar(pools)

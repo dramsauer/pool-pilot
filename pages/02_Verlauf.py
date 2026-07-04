@@ -5,6 +5,7 @@ import pandas as pd
 from database.db import get_engine, init_db, get_session
 from database.repository import get_pools, get_readings_since, get_readings_for_pool
 from utils.theme import inject_theme
+from utils.nav import render_sidebar
 
 st.set_page_config(
     page_title="PoolPilot - Dein intelligenter Pool-Helfer", page_icon="🏊"
@@ -15,23 +16,17 @@ engine = get_engine()
 init_db(engine)
 session = get_session(engine)
 
+pools = get_pools(session)
+render_sidebar(pools)
+
 st.title("📈 Verlauf & Trends")
 
-pools = get_pools(session)
-if len(pools) > 1:
-    pool_options = {0: "Alle Pools"} | {p.id: p.name for p in pools}
-    selected = st.selectbox(
-        "Pool filtern",
-        options=list(pool_options.keys()),
-        format_func=lambda x: pool_options[x],
-    )
-else:
-    selected = pools[0].id if pools else None
+selected_pool_id = st.session_state.get("pool_selector", 0)
 
 days = st.segmented_control("Zeitraum", ["7", "14", "30", "90"], default="30")
 
-if selected and selected != 0:
-    readings = get_readings_for_pool(session, selected, limit=200)
+if selected_pool_id and selected_pool_id != 0:
+    readings = get_readings_for_pool(session, selected_pool_id, limit=200)
 else:
     readings = get_readings_since(session, days=int(days))
     readings = [r for r in readings]

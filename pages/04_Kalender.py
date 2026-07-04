@@ -4,6 +4,7 @@ import streamlit as st
 from database.db import get_engine, init_db, get_session
 from database.models import MaintenanceTask
 from utils.theme import inject_theme
+from utils.nav import render_sidebar
 from database.repository import (
     get_pools, get_tasks_by_date_range,
     complete_task_with_notes,
@@ -19,17 +20,12 @@ engine = get_engine()
 init_db(engine)
 session = get_session(engine)
 
+pools = get_pools(session)
+render_sidebar(pools)
+
 st.title("📅 Aufgaben-Kalender")
 
-pools = get_pools(session)
-pool_options = {p.id: p.name for p in pools}
-pool_options[0] = "Alle Pools"
-selected_pool_id = st.selectbox(
-    "Pool filtern",
-    options=list(pool_options.keys()),
-    format_func=lambda x: pool_options[x],
-    key="calendar_pool",
-)
+selected_pool_id = st.session_state.get("pool_selector", 0)
 
 now = datetime.date.today()
 

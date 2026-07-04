@@ -1,6 +1,7 @@
 import streamlit as st
 from database.db import get_engine, init_db, get_session
 from utils.theme import inject_theme
+from utils.nav import render_sidebar
 from database.repository import (
     save_pool,
     get_pools,
@@ -33,6 +34,9 @@ inject_theme()
 engine = get_engine()
 init_db(engine)
 session = get_session(engine)
+
+pools = get_pools(session)
+render_sidebar(pools)
 
 st.title("🏊 Pools & Produkte")
 
@@ -418,5 +422,73 @@ with tab3:
                 else None,
                 interval_days=np_interval,
                 notes=np_notes,
+            )
+            st.rerun()
+
+with tab4:
+    st.subheader("Messinstrumente")
+    for inst in get_instruments(session):
+        with st.expander(f"📏 {inst.name}"):
+            with st.form(key=f"inst_{inst.id}"):
+                i_name = st.text_input("Name", value=inst.name)
+                i_brand = st.text_input("Marke", value=inst.brand or "")
+                st.markdown("**Messbare Parameter**")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    i_ph = st.checkbox("pH", value=inst.can_measure_ph)
+                    i_chl = st.checkbox("Chlor", value=inst.can_measure_chlorine)
+                    i_bro = st.checkbox("Brom", value=inst.can_measure_bromine)
+                with col2:
+                    i_alk = st.checkbox("Alkalinität", value=inst.can_measure_alkalinity)
+                    i_har = st.checkbox("Härte", value=inst.can_measure_hardness)
+                    i_cya = st.checkbox("CYA", value=inst.can_measure_cya)
+                with col3:
+                    i_sal = st.checkbox("Salz", value=inst.can_measure_salt)
+                    i_oxy = st.checkbox("Sauerstoff", value=inst.can_measure_oxygen)
+                i_notes = st.text_area("Notizen", value=inst.notes or "")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.form_submit_button("Speichern"):
+                        update_instrument(
+                            session, inst.id, name=i_name, brand=i_brand,
+                            can_measure_ph=i_ph, can_measure_chlorine=i_chl,
+                            can_measure_bromine=i_bro, can_measure_alkalinity=i_alk,
+                            can_measure_hardness=i_har, can_measure_cya=i_cya,
+                            can_measure_salt=i_sal, can_measure_oxygen=i_oxy,
+                            notes=i_notes,
+                        )
+                        st.rerun()
+                with col2:
+                    if st.form_submit_button("Löschen"):
+                        delete_instrument(session, inst.id)
+                        st.rerun()
+
+    st.divider()
+    with st.form("new_instrument"):
+        st.subheader("Neues Messinstrument")
+        n_name = st.text_input("Name")
+        n_brand = st.text_input("Marke")
+        st.markdown("**Messbare Parameter**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            n_ph = st.checkbox("pH", value=False)
+            n_chl = st.checkbox("Chlor", value=False)
+            n_bro = st.checkbox("Brom", value=False)
+        with col2:
+            n_alk = st.checkbox("Alkalinität", value=False)
+            n_har = st.checkbox("Härte", value=False)
+            n_cya = st.checkbox("CYA", value=False)
+        with col3:
+            n_sal = st.checkbox("Salz", value=False)
+            n_oxy = st.checkbox("Sauerstoff", value=False)
+        n_notes = st.text_area("Notizen")
+        if st.form_submit_button("Speichern"):
+            save_instrument(
+                session, name=n_name, brand=n_brand,
+                can_measure_ph=n_ph, can_measure_chlorine=n_chl,
+                can_measure_bromine=n_bro, can_measure_alkalinity=n_alk,
+                can_measure_hardness=n_har, can_measure_cya=n_cya,
+                can_measure_salt=n_sal, can_measure_oxygen=n_oxy,
+                notes=n_notes,
             )
             st.rerun()
