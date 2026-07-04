@@ -502,16 +502,18 @@ if st.session_state.show_results:
                             "\U0001f4cb Aufgabe", key=f"task_{d.product}",
                             use_container_width=True,
                         ):
-                            task = save_task(
-                                session,
-                                task_type="dosierung",
-                                title=f"{d.product}: {d.amount:g} {d.unit}",
-                                description=d.reason,
-                                due_date=datetime.date.today(),
-                                interval_days=0,
-                            )
-                            st.session_state.cal_selected_task_id = task.id
-                            st.session_state.cal_click_seed = st.session_state.get("cal_click_seed", 0) + 1
+                            st.session_state.task_dialog_state = {
+                                "mode": "create",
+                                "pool_id": selected_pool_id,
+                                "title": f"{d.product}: {d.amount:g} {d.unit}",
+                                "due_date": datetime.date.today(),
+                                "description": d.reason,
+                                "product_name": d.product,
+                                "product_id": getattr(d, 'product_id', None),
+                                "recommended_amount": d.amount,
+                                "recommended_unit": d.unit,
+                                "notes": "",
+                            }
                             st.rerun()
                     with cols[2]:
                         if is_done:
@@ -706,5 +708,5 @@ if st.session_state.show_results:
 
 render_sidebar(pools)
 
-if st.session_state.get("cal_selected_task_id"):
-    task_dialog(st.session_state.cal_selected_task_id, session, pools, products)
+if st.session_state.get("task_dialog_state"):
+    task_dialog(session, pools, products)

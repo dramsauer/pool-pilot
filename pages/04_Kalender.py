@@ -121,6 +121,8 @@ cal_options = {
 
 if "cal_click_seed" not in st.session_state:
     st.session_state.cal_click_seed = 0
+if "task_dialog_state" not in st.session_state:
+    st.session_state.task_dialog_state = None
 
 cal_result = st_calendar(
     events=events, options=cal_options,
@@ -129,12 +131,15 @@ cal_result = st_calendar(
 )
 
 if cal_result is not None and cal_result.get("callback") == "eventClick":
-    st.session_state.cal_selected_task_id = cal_result["eventClick"]["event"]["extendedProps"]["task_id"]
+    st.session_state.task_dialog_state = {
+        "mode": "edit",
+        "task_id": cal_result["eventClick"]["event"]["extendedProps"]["task_id"],
+    }
     st.session_state.cal_click_seed += 1
     st.rerun()
 
-if st.session_state.get("cal_selected_task_id"):
-    task_dialog(st.session_state.cal_selected_task_id, session, pools, products)
+if st.session_state.get("task_dialog_state"):
+    task_dialog(session, pools, products)
 
 st.divider()
 st.subheader("📋 Aufgaben des Monats")
