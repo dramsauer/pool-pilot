@@ -33,13 +33,29 @@ from database.repository import (
     update_task,
     delete_task,
 )
-from database.models import TaskTemplate, PoolTaskDefault, MaintenanceTask
+from database.models import TaskTemplate, PoolTaskDefault, MaintenanceTask, Parameter
+
+
+def _seed_params(session):
+    for i, (name, display, unit) in enumerate([
+        ("ph", "pH", ""),
+        ("chlorine", "Chlor", "mg/l"),
+        ("alkalinity", "Alkalinität", "mg/l"),
+        ("hardness", "Härte", "mg/l"),
+        ("bromine", "Brom", "mg/l"),
+        ("cya", "Cyanursäure", "mg/l"),
+        ("salt", "Salz", "mg/l"),
+        ("oxygen", "Aktivsauerstoff", "mg/l"),
+    ]):
+        session.add(Parameter(name=name, display_name=display, unit=unit, sort_order=i))
+    session.commit()
 
 
 def setup():
     engine = get_engine(":memory:")
     Base.metadata.create_all(engine)
     session = get_session(engine)
+    _seed_params(session)
     return session
 
 
@@ -47,43 +63,34 @@ def test_save_and_get_readings():
     session = setup()
     save_reading(
         session,
-        ph=7.4,
-        chlorine=1.5,
-        alkalinity=100,
-        hardness=200,
+        values={"ph": 7.4, "chlorine": 1.5, "alkalinity": 100, "hardness": 200},
         temperature_c=35,
         lsi=0.5,
         rsi=7.0,
     )
     readings = get_readings(session)
     assert len(readings) == 1
-    assert readings[0].ph == 7.4
+    assert readings[0]._values["ph"] == 7.4
 
 
 def test_latest_reading():
     session = setup()
     save_reading(
         session,
-        ph=7.4,
-        chlorine=1.5,
-        alkalinity=100,
-        hardness=200,
+        values={"ph": 7.4, "chlorine": 1.5, "alkalinity": 100, "hardness": 200},
         temperature_c=35,
         lsi=0.5,
         rsi=7.0,
     )
     save_reading(
         session,
-        ph=7.6,
-        chlorine=2.0,
-        alkalinity=110,
-        hardness=210,
+        values={"ph": 7.6, "chlorine": 2.0, "alkalinity": 110, "hardness": 210},
         temperature_c=36,
         lsi=0.6,
         rsi=7.2,
     )
     latest = get_latest_reading(session)
-    assert latest.ph == 7.6
+    assert latest._values["ph"] == 7.6
 
 
 def test_pending_tasks():

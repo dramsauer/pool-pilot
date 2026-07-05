@@ -3,52 +3,89 @@ from __future__ import annotations
 import json
 import datetime
 from sqlalchemy.orm import Session
-from database.models import Reading, MaintenanceTask, Photo, Pool, Trinkwasser, Product, Instrument, TaskTemplate, PoolTaskDefault
+from database.models import Reading, MaintenanceTask, Photo, Pool, Trinkwasser, Product, Instrument, TaskTemplate, PoolTaskDefault, Parameter, ReadingValue, InstrumentCapability
+
+
+def get_parameters(session: Session) -> list[Parameter]:
+    return session.query(Parameter).order_by(Parameter.sort_order).all()
+
+
+def get_parameter_by_name(session: Session, name: str) -> Parameter | None:
+    return session.query(Parameter).filter(Parameter.name == name).first()
 
 
 def save_reading(
     session: Session,
-    ph: float,
-    chlorine: float,
-    alkalinity: float,
-    hardness: float,
+    values: dict[str, float],
     temperature_c: float,
-    lsi: float,
-    rsi: float,
-    cya: float = 0,
-    csi: float = 0.0,
-    ccpp: float = 0.0,
+    lsi: float | None = None,
+    rsi: float | None = None,
+    csi: float | None = None,
+    ccpp: float | None = None,
     dosing: list | None = None,
     notes: str = "",
 ) -> Reading:
     reading = Reading(
-        ph=ph,
-        chlorine=chlorine,
-        alkalinity=alkalinity,
-        hardness=hardness,
-        cya=cya,
         temperature_c=temperature_c,
         lsi_value=lsi,
         rsi_value=rsi,
         csi_value=csi,
         ccpp_value=ccpp,
-        dosing_recommendation=json.dumps(dosing, ensure_ascii=False)
-        if dosing
-        else None,
+        dosing_recommendation=json.dumps(dosing, ensure_ascii=False) if dosing else None,
         notes=notes,
     )
     session.add(reading)
+    session.flush()
+    for param_name, val in values.items():
+        param = get_parameter_by_name(session, param_name)
+        if param:
+            session.add(ReadingValue(reading_id=reading.id, parameter_id=param.id, value=val))
     session.commit()
+    session.refresh(reading)
     return reading
 
 
+def _attach_values(session: Session, reading: Reading) -> Reading:
+    if reading is None:
+        return reading
+    rows = (
+        session.query(ReadingValue, Parameter)
+        .join(Parameter, ReadingValue.parameter_id == Parameter.id)
+        .filter(ReadingValue.reading_id == reading.id)
+        .all()
+    )
+    reading._values = {p.name: rv.value for rv, p in rows}
+    return reading
+
+
+def _attach_values_many(session: Session, readings: list[Reading]) -> list[Reading]:
+    if not readings:
+        return readings
+    ids = [r.id for r in readings]
+    rows = (
+        session.query(ReadingValue, Parameter)
+        .join(Parameter, ReadingValue.parameter_id == Parameter.id)
+        .filter(ReadingValue.reading_id.in_(ids))
+        .all()
+    )
+    mapping: dict[int, dict] = {}
+    for rv, p in rows:
+        mapping.setdefault(rv.reading_id, {})[p.name] = rv.value
+    for r in readings:
+        r._values = mapping.get(r.id, {})
+    return readings
+
+
 def get_readings(session: Session, limit: int = 50) -> list[Reading]:
-    return session.query(Reading).order_by(Reading.timestamp.desc()).limit(limit).all()
+    return _attach_values_many(
+        session, session.query(Reading).order_by(Reading.timestamp.desc()).limit(limit).all()
+    )
 
 
 def get_readings_since(session: Session, days: int = 30) -> list[Reading]:
     since = datetime.datetime.now() - datetime.timedelta(days=days)
-    return (
+    return _attach_values_many(
+        session,
         session.query(Reading)
         .filter(Reading.timestamp >= since)
         .order_by(Reading.timestamp.desc())
@@ -57,7 +94,9 @@ def get_readings_since(session: Session, days: int = 30) -> list[Reading]:
 
 
 def get_latest_reading(session: Session) -> Reading | None:
-    return session.query(Reading).order_by(Reading.timestamp.desc()).first()
+    return _attach_values(
+        session, session.query(Reading).order_by(Reading.timestamp.desc()).first()
+    )
 
 
 def save_task(
@@ -308,37 +347,31 @@ def delete_product(session: Session, product_id: int):
 def save_reading_for_pool(
     session: Session,
     pool_id: int,
-    ph: float,
-    chlorine: float,
-    alkalinity: float,
-    hardness: float,
+    values: dict[str, float],
     temperature_c: float,
-    lsi: float,
-    rsi: float,
-    cya: float = 0,
-    csi: float = 0.0,
-    ccpp: float = 0.0,
+    lsi: float | None = None,
+    rsi: float | None = None,
+    csi: float | None = None,
+    ccpp: float | None = None,
     dosing: list | None = None,
     notes: str = "",
 ) -> Reading:
     reading = Reading(
         pool_id=pool_id,
-        ph=ph,
-        chlorine=chlorine,
-        alkalinity=alkalinity,
-        hardness=hardness,
-        cya=cya,
         temperature_c=temperature_c,
         lsi_value=lsi,
         rsi_value=rsi,
         csi_value=csi,
         ccpp_value=ccpp,
-        dosing_recommendation=json.dumps(dosing, ensure_ascii=False)
-        if dosing
-        else None,
+        dosing_recommendation=json.dumps(dosing, ensure_ascii=False) if dosing else None,
         notes=notes,
     )
     session.add(reading)
+    session.flush()
+    for param_name, val in values.items():
+        param = get_parameter_by_name(session, param_name)
+        if param:
+            session.add(ReadingValue(reading_id=reading.id, parameter_id=param.id, value=val))
     session.commit()
     session.refresh(reading)
     return reading
@@ -347,7 +380,8 @@ def save_reading_for_pool(
 def get_readings_for_pool(
     session: Session, pool_id: int, limit: int = 50
 ) -> list[Reading]:
-    return (
+    return _attach_values_many(
+        session,
         session.query(Reading)
         .filter(Reading.pool_id == pool_id)
         .order_by(Reading.timestamp.desc())
@@ -357,7 +391,8 @@ def get_readings_for_pool(
 
 
 def get_latest_reading_for_pool(session: Session, pool_id: int) -> Reading | None:
-    return (
+    return _attach_values(
+        session,
         session.query(Reading)
         .filter(Reading.pool_id == pool_id)
         .order_by(Reading.timestamp.desc())
@@ -530,33 +565,46 @@ def save_instrument(
     session: Session,
     name: str,
     brand: str = "",
-    can_measure_ph: bool = False,
-    can_measure_chlorine: bool = False,
-    can_measure_bromine: bool = False,
-    can_measure_alkalinity: bool = False,
-    can_measure_hardness: bool = False,
-    can_measure_cya: bool = False,
-    can_measure_salt: bool = False,
-    can_measure_oxygen: bool = False,
+    capabilities: list[str] | None = None,
     notes: str = "",
 ) -> Instrument:
-    inst = Instrument(
-        name=name,
-        brand=brand,
-        can_measure_ph=can_measure_ph,
-        can_measure_chlorine=can_measure_chlorine,
-        can_measure_bromine=can_measure_bromine,
-        can_measure_alkalinity=can_measure_alkalinity,
-        can_measure_hardness=can_measure_hardness,
-        can_measure_cya=can_measure_cya,
-        can_measure_salt=can_measure_salt,
-        can_measure_oxygen=can_measure_oxygen,
-        notes=notes,
-    )
+    inst = Instrument(name=name, brand=brand, notes=notes)
     session.add(inst)
+    session.flush()
+    for cap_name in (capabilities or []):
+        param = get_parameter_by_name(session, cap_name)
+        if param:
+            session.add(InstrumentCapability(instrument_id=inst.id, parameter_id=param.id))
     session.commit()
     session.refresh(inst)
     return inst
+
+
+def get_instrument_capabilities(session: Session, instrument_id: int) -> list[Parameter]:
+    return (
+        session.query(Parameter)
+        .join(InstrumentCapability)
+        .filter(InstrumentCapability.instrument_id == instrument_id)
+        .order_by(Parameter.sort_order)
+        .all()
+    )
+
+
+def update_instrument_capabilities(
+    session: Session,
+    instrument_id: int,
+    capabilities: list[str],
+) -> None:
+    session.query(InstrumentCapability).filter(
+        InstrumentCapability.instrument_id == instrument_id
+    ).delete()
+    for cap_name in capabilities:
+        param = get_parameter_by_name(session, cap_name)
+        if param:
+            session.add(InstrumentCapability(
+                instrument_id=instrument_id, parameter_id=param.id
+            ))
+    session.commit()
 
 
 def update_instrument(session: Session, instrument_id: int, **kwargs) -> Instrument | None:
@@ -573,6 +621,9 @@ def update_instrument(session: Session, instrument_id: int, **kwargs) -> Instrum
 def delete_instrument(session: Session, instrument_id: int):
     inst = session.query(Instrument).filter(Instrument.id == instrument_id).first()
     if inst:
+        session.query(InstrumentCapability).filter(
+            InstrumentCapability.instrument_id == instrument_id
+        ).delete()
         session.delete(inst)
         session.commit()
 
