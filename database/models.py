@@ -117,6 +117,7 @@ class Reading(Base):
     chlorine = Column(Float, nullable=False)
     alkalinity = Column(Float, nullable=False)
     hardness = Column(Float, nullable=False)
+    cya = Column(Float, default=0)
     temperature_c = Column(Float, nullable=False)
     lsi_value = Column(Float)
     rsi_value = Column(Float)

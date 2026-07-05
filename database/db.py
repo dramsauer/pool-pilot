@@ -44,6 +44,7 @@ def _migrate_schema(session: Session):
             session.execute(text(f"ALTER TABLE readings ADD COLUMN {col} INTEGER"))
 
     for col, t in [
+        ("cya", "FLOAT DEFAULT 0"),
         ("csi_value", "FLOAT"),
         ("ccpp_value", "FLOAT"),
     ]:

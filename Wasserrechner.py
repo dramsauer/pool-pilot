@@ -350,6 +350,7 @@ test = WaterTest(
     chlorine=chlorine,
     alkalinity=alkalinity,
     hardness=hardness,
+    cya=cya,
     temperature_c=temperature,
 )
 dosing = recommend_dosing_from_db(test, pool, products)
@@ -376,6 +377,7 @@ if st.button("\U0001f4be Messung speichern", type="primary", use_container_width
         chlorine=chlorine,
         alkalinity=alkalinity,
         hardness=hardness,
+        cya=cya,
         temperature_c=temperature,
         lsi=lsi,
         rsi=rsi,

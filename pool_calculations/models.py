@@ -10,6 +10,7 @@ class WaterTest:
     alkalinity: float
     hardness: float
     temperature_c: float
+    cya: float = 0
     notes: str = ""
 
 

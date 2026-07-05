@@ -59,13 +59,13 @@ temperature_default = 35
   brand = "POOL"
   can_measure_ph = true
   can_measure_chlorine = true
-  can_measure_bromine = true
+  can_measure_bromine = false
   can_measure_alkalinity = true
   can_measure_hardness = true
   can_measure_cya = true
-  can_measure_salt = true
-  can_measure_oxygen = true
-  notes = "8 Parameter: pH, Chlor, Brom, Alk, Härte, CYA, O₂, Salz"
+  can_measure_salt = false
+  can_measure_oxygen = false
+  notes = "5 Parameter: pH, Chlor, Alk, CYA, Härte"
 
 [task_defaults]
 templates = [
