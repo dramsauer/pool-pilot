@@ -75,10 +75,6 @@ def test_maintenance_task_with_follow_up():
 def test_create_readings_table():
     session = create_memory_session()
     reading = Reading(
-        ph=7.4,
-        chlorine=1.5,
-        alkalinity=100,
-        hardness=200,
         temperature_c=35,
         lsi_value=0.5,
         rsi_value=7.0,
@@ -86,7 +82,6 @@ def test_create_readings_table():
     session.add(reading)
     session.commit()
     saved = session.query(Reading).first()
-    assert saved.ph == 7.4
     assert saved.lsi_value == 0.5
     session.close()
 
@@ -148,7 +143,13 @@ def test_migration_creates_default_pool():
         Instrument.name == "Summer Fun Teststreifen"
     ).first()
     assert summer_fun is not None
-    assert summer_fun.can_measure_ph is True
+    from database.models import InstrumentCapability, Parameter
+    ph = session.query(Parameter).filter(Parameter.name == "ph").first()
+    caps = session.query(InstrumentCapability).filter(
+        InstrumentCapability.instrument_id == summer_fun.id,
+        InstrumentCapability.parameter_id == ph.id,
+    ).all()
+    assert len(caps) == 1
     session.close()
 
 
