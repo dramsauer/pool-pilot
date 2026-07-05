@@ -230,12 +230,10 @@ with col_water:
 
         pct = lambda v: v / hi * 100
         st.markdown(f"""
-<div style="display:flex;align-items:center;gap:4px;margin:-14px 0 16px;font-size:11px;color:#555">
-<span>\u25b2 {hi}</span>
-<div style="flex:1;height:8px;background:linear-gradient(to right,#e0e0e0 {pct(min_cm)}%,#81c784 {pct(min_cm)}%,#81c784 {pct(max_cm)}%,#e0e0e0 {pct(max_cm)}%);border-radius:4px;position:relative">
-    <div style="position:absolute;left:{pct(water_level_cm)}%;top:-2px;width:2px;height:12px;background:#333;border-radius:1px"></div>
-</div>
-<span>\u25bc 0</span>
+<div style="margin:-34px 0 16px;height:20px;background:linear-gradient(to right,#e0e0e0 {pct(min_cm)}%,#81c784 {pct(min_cm)}%,#81c784 {pct(max_cm)}%,#e0e0e0 {pct(max_cm)}%);border-radius:4px;position:relative">
+<div style="position:absolute;left:{pct(min_cm)-4}%;top:50%;transform:translate(-50%,-50%);font-size:10px;font-weight:700;color:#2e7d32">Min</div>
+<div style="position:absolute;left:{pct(max_cm)+4}%;top:50%;transform:translate(-50%,-50%);font-size:10px;font-weight:700;color:#2e7d32">Max</div>
+<div style="position:absolute;left:{pct(water_level_cm)}%;top:50%;transform:translate(-50%,-50%);width:3px;height:26px;background:#333;border-radius:1.5px"></div>
 </div>
 """, unsafe_allow_html=True)
         pool_shape = pool.shape or "rechteckig"
