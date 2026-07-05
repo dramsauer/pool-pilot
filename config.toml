@@ -14,6 +14,48 @@ hardness_min = 150
 hardness_max = 250
 temperature_default = 35
 
+[parameters]
+  [parameters.ph]
+  display_name = "pH-Wert"
+  unit = ""
+  default_value = 7.4
+  sort_order = 10
+  [parameters.chlorine]
+  display_name = "Freies Chlor"
+  unit = "mg/L"
+  default_value = 1.5
+  sort_order = 20
+  [parameters.alkalinity]
+  display_name = "Gesamtalkalinität"
+  unit = "mg/L CaCO₃"
+  default_value = 100
+  sort_order = 30
+  [parameters.hardness]
+  display_name = "Gesamthärte"
+  unit = "mg/L CaCO₃"
+  default_value = 200
+  sort_order = 40
+  [parameters.cya]
+  display_name = "Cyanursäure"
+  unit = "mg/L"
+  default_value = 0
+  sort_order = 50
+  [parameters.bromine]
+  display_name = "Brom"
+  unit = "mg/L"
+  default_value = 0
+  sort_order = 60
+  [parameters.salt]
+  display_name = "Salzgehalt (TDS)"
+  unit = "mg/L NaCl"
+  default_value = 500
+  sort_order = 70
+  [parameters.oxygen]
+  display_name = "Sauerstoff"
+  unit = "mg/L"
+  default_value = 0
+  sort_order = 80
+
 [products]
   [products.ph_minus]
   name = "Summer Fun pH-Minus Granulat"
@@ -49,22 +91,13 @@ temperature_default = 35
   [instruments.summer_fun_teststreifen]
   name = "Summer Fun Teststreifen"
   brand = "Summer Fun"
-  can_measure_ph = true
-  can_measure_chlorine = true
-  can_measure_bromine = true
+  capabilities = ["ph", "chlorine", "bromine"]
   notes = "3-in-1: pH, Chlor, Brom"
 
   [instruments.pool_total_5in1]
   name = "POOL Total 5 in 1"
   brand = "POOL"
-  can_measure_ph = true
-  can_measure_chlorine = true
-  can_measure_bromine = false
-  can_measure_alkalinity = true
-  can_measure_hardness = true
-  can_measure_cya = true
-  can_measure_salt = false
-  can_measure_oxygen = false
+  capabilities = ["ph", "chlorine", "alkalinity", "hardness", "cya"]
   notes = "5 Parameter: pH, Chlor, Alk, CYA, Härte"
 
 [task_defaults]

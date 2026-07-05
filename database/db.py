@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Optional
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker, Session
-from database.models import Base, Pool, Trinkwasser, Product, Reading, Instrument, TaskTemplate, PoolTaskDefault, MaintenanceTask
+from database.models import Base, Pool, Trinkwasser, Product, Reading, Instrument, TaskTemplate, PoolTaskDefault, MaintenanceTask, Parameter, ReadingValue, InstrumentCapability
 
 
 DB_PATH = Path(__file__).parent.parent / "data" / "pool.db"
@@ -116,6 +116,91 @@ def _migrate_schema(session: Session):
     except Exception:
         pass  # table might not exist yet
 
+    # ========== EAV Migration ==========
+    existing_tables = inspector.get_table_names()
+
+    # Create parameters table if needed
+    if "parameters" not in existing_tables:
+        session.execute(text("""
+            CREATE TABLE parameters (
+                id INTEGER PRIMARY KEY,
+                name VARCHAR(50) UNIQUE NOT NULL,
+                display_name VARCHAR(100) NOT NULL,
+                unit VARCHAR(30) DEFAULT '',
+                default_value FLOAT DEFAULT 0.0,
+                sort_order INTEGER DEFAULT 0
+            )
+        """))
+
+    # Create reading_values table if needed
+    if "reading_values" not in existing_tables:
+        session.execute(text("""
+            CREATE TABLE reading_values (
+                id INTEGER PRIMARY KEY,
+                reading_id INTEGER NOT NULL REFERENCES readings(id),
+                parameter_id INTEGER NOT NULL REFERENCES parameters(id),
+                value FLOAT NOT NULL,
+                UNIQUE(reading_id, parameter_id)
+            )
+        """))
+
+    # Create instrument_capabilities table if needed
+    if "instrument_capabilities" not in existing_tables:
+        session.execute(text("""
+            CREATE TABLE instrument_capabilities (
+                id INTEGER PRIMARY KEY,
+                instrument_id INTEGER NOT NULL REFERENCES instruments(id),
+                parameter_id INTEGER NOT NULL REFERENCES parameters(id),
+                UNIQUE(instrument_id, parameter_id)
+            )
+        """))
+
+    # Only run data migration if parameters table is empty (first time migration)
+    if session.query(Parameter).count() == 0:
+        # Old reading columns might still exist in the DB even though SQLAlchemy model
+        # doesn't reference them anymore. Check and migrate.
+        reading_cols = {c["name"] for c in inspector.get_columns("readings")}
+        still_have_old_cols = any(c in reading_cols for c in ["ph", "chlorine", "alkalinity", "hardness", "cya"])
+
+        if still_have_old_cols:
+            for col in ["ph", "chlorine", "alkalinity", "hardness", "cya"]:
+                if col in reading_cols:
+                    session.execute(text(f"INSERT OR IGNORE INTO parameters (name, display_name, unit, default_value, sort_order) VALUES ('{col}', '{col}', '', 0.0, 0)"))
+                    session.commit()
+                    param = session.execute(text(f"SELECT id FROM parameters WHERE name = '{col}'")).fetchone()
+                    if param:
+                        session.execute(text(f"""
+                            INSERT OR IGNORE INTO reading_values (reading_id, parameter_id, value)
+                            SELECT id, {param[0]}, {col} FROM readings WHERE {col} IS NOT NULL
+                        """))
+                    try:
+                        session.execute(text(f"ALTER TABLE readings DROP COLUMN {col}"))
+                    except Exception:
+                        pass
+
+        # Old instrument columns migration
+        inst_cols = {c["name"] for c in inspector.get_columns("instruments")}
+        still_have_old_bools = any(c.startswith("can_measure_") for c in inst_cols)
+
+        if still_have_old_bools:
+            for col in inst_cols:
+                if col.startswith("can_measure_"):
+                    param_name = col.replace("can_measure_", "")
+                    existing_param = session.execute(text(f"SELECT id FROM parameters WHERE name = '{param_name}'")).fetchone()
+                    if not existing_param:
+                        session.execute(text(f"INSERT OR IGNORE INTO parameters (name, display_name, unit, default_value, sort_order) VALUES ('{param_name}', '{param_name}', '', 0.0, 0)"))
+                        session.commit()
+                        existing_param = session.execute(text(f"SELECT id FROM parameters WHERE name = '{param_name}'")).fetchone()
+                    if existing_param:
+                        session.execute(text(f"""
+                            INSERT OR IGNORE INTO instrument_capabilities (instrument_id, parameter_id)
+                            SELECT id, {existing_param[0]} FROM instruments WHERE {col} = 1
+                        """))
+                    try:
+                        session.execute(text(f"ALTER TABLE instruments DROP COLUMN {col}"))
+                    except Exception:
+                        pass
+
     session.commit()
 
 
@@ -133,22 +218,35 @@ def migrate_from_config(session: Session):
     with open(config_path, "rb") as f:
         data = tomllib.load(f)
 
+    # Seed parameters from config (if table empty)
+    if session.query(Parameter).count() == 0:
+        for key, pdata in data.get("parameters", {}).items():
+            session.add(Parameter(
+                name=key,
+                display_name=pdata.get("display_name", key),
+                unit=pdata.get("unit", ""),
+                default_value=pdata.get("default_value", 0.0),
+                sort_order=pdata.get("sort_order", 0),
+            ))
+        session.commit()
+
     # Seed instruments from config (if table empty)
     if session.query(Instrument).count() == 0:
         for key, inst in data.get("instruments", {}).items():
-            session.add(Instrument(
+            instrument = Instrument(
                 name=inst["name"],
                 brand=inst.get("brand", ""),
-                can_measure_ph=inst.get("can_measure_ph", False),
-                can_measure_chlorine=inst.get("can_measure_chlorine", False),
-                can_measure_bromine=inst.get("can_measure_bromine", False),
-                can_measure_alkalinity=inst.get("can_measure_alkalinity", False),
-                can_measure_hardness=inst.get("can_measure_hardness", False),
-                can_measure_cya=inst.get("can_measure_cya", False),
-                can_measure_salt=inst.get("can_measure_salt", False),
-                can_measure_oxygen=inst.get("can_measure_oxygen", False),
                 notes=inst.get("notes", ""),
-            ))
+            )
+            session.add(instrument)
+            session.flush()
+            for cap_name in inst.get("capabilities", []):
+                param = session.query(Parameter).filter(Parameter.name == cap_name).first()
+                if param:
+                    session.add(InstrumentCapability(
+                        instrument_id=instrument.id,
+                        parameter_id=param.id,
+                    ))
         session.commit()
 
     # Seed trinkwasser from config (if table empty)
