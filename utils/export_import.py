@@ -9,6 +9,7 @@ from database.db import get_engine, get_session
 from database.models import (
     Instrument, Trinkwasser, Product, TaskTemplate, PoolTaskDefault,
     Pool, Reading, Photo, MaintenanceTask,
+    Parameter, ReadingValue, InstrumentCapability,
 )
 
 
@@ -28,22 +29,27 @@ def create_export_zip(data_dir: Union[Path, str]) -> bytes:
 
 
 TABLE_CATEGORIES = {
+    "parameters": {"model": Parameter, "label": "Parameters"},
     "instruments": {"model": Instrument, "label": "Instruments"},
+    "instrument_capabilities": {"model": InstrumentCapability, "label": "Instrument Capabilities"},
     "trinkwasser": {"model": Trinkwasser, "label": "Tap Water Sources"},
     "products": {"model": Product, "label": "Products"},
     "task_templates": {"model": TaskTemplate, "label": "Task Templates"},
     "pools": {"model": Pool, "label": "Pools"},
     "pool_task_defaults": {"model": PoolTaskDefault, "label": "Pool Task Defaults"},
     "readings": {"model": Reading, "label": "Measurements"},
+    "reading_values": {"model": ReadingValue, "label": "Measurement Values"},
     "photos": {"model": Photo, "label": "Photos"},
     "maintenance_tasks": {"model": MaintenanceTask, "label": "Tasks"},
 }
 
 DEPENDENCY_ORDER = [
-    "instruments", "trinkwasser", "products", "task_templates",
+    "parameters",
+    "instruments", "instrument_capabilities",
+    "trinkwasser", "products", "task_templates",
     "pools",
     "pool_task_defaults",
-    "readings",
+    "readings", "reading_values",
     "photos",
     "maintenance_tasks",
 ]
@@ -59,6 +65,7 @@ USER_CATEGORIES = [
 ]
 
 CATEGORY_MERGE_KEYS = {
+    "parameters": ["name"],
     "pools": ["name"],
     "products": ["name"],
     "instruments": ["name"],
@@ -71,8 +78,10 @@ CATEGORY_MERGE_KEYS = {
 }
 
 PARENT_DEPENDENCIES = {
+    "instrument_capabilities": ["parameters", "instruments"],
     "pool_task_defaults": ["pools", "task_templates"],
     "readings": ["pools"],
+    "reading_values": ["readings", "parameters"],
     "photos": ["readings"],
     "maintenance_tasks": ["pools", "readings", "products"],
 }
@@ -125,9 +134,13 @@ def analyze_zip(zip_bytes: bytes) -> AnalysisResult:
 
 
 _FK_MAP = {
+    ("instrument_capabilities", "parameters"): "parameter_id",
+    ("instrument_capabilities", "instruments"): "instrument_id",
     ("pool_task_defaults", "pools"): "pool_id",
     ("pool_task_defaults", "task_templates"): "template_id",
     ("readings", "pools"): "pool_id",
+    ("reading_values", "readings"): "reading_id",
+    ("reading_values", "parameters"): "parameter_id",
     ("photos", "readings"): "reading_id",
     ("maintenance_tasks", "pools"): "pool_id",
     ("maintenance_tasks", "readings"): "reading_id",
