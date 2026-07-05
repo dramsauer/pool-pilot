@@ -262,8 +262,7 @@ def test_execute_import_remaps_readings_fk(tmp_path):
     s.add(p)
     s.flush()
     s.add(Reading(
-        pool_id=p.id, timestamp=datetime(2026, 6, 1, 12, 0, 0),
-        ph=7.2, chlorine=1.0, alkalinity=100, hardness=200, temperature_c=30,
+        pool_id=p.id, timestamp=datetime(2026, 6, 1, 12, 0, 0), temperature_c=30,
     ))
     s.commit()
     s.close()
@@ -315,8 +314,7 @@ def test_execute_import_merge_preserves_timestamp(tmp_path):
     s.flush()
     ts = datetime(2026, 7, 1, 10, 30, 0)
     s.add(Reading(
-        pool_id=p.id, timestamp=ts,
-        ph=7.2, chlorine=1.0, alkalinity=100, hardness=200, temperature_c=30,
+        pool_id=p.id, timestamp=ts, temperature_c=30,
     ))
     s.commit()
     s.close()
