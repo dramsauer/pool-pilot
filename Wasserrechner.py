@@ -202,7 +202,7 @@ for i, param in enumerate(cap_params):
     rng = _PARAM_RANGES.get(param.name, (0.0, 500.0, 1.0))
     with col:
         user_values[param.name] = st.slider(
-            param.display_name, rng[0], rng[1], float(default), rng[2],
+            param.display_name, float(rng[0]), float(rng[1]), float(default), float(rng[2]),
             help=help_texts.get(param.name, ""),
         )
 

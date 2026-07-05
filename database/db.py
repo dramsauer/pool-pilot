@@ -20,8 +20,8 @@ def init_db(engine=None):
         engine = get_engine()
     Base.metadata.create_all(engine)
     session = get_session(engine)
-    _migrate_schema(session)
     migrate_from_config(session)
+    _migrate_schema(session)
     _seed_task_templates(session)
     session.close()
 
@@ -155,51 +155,51 @@ def _migrate_schema(session: Session):
             )
         """))
 
-    # Only run data migration if parameters table is empty (first time migration)
-    if session.query(Parameter).count() == 0:
-        # Old reading columns might still exist in the DB even though SQLAlchemy model
-        # doesn't reference them anymore. Check and migrate.
-        reading_cols = {c["name"] for c in inspector.get_columns("readings")}
-        still_have_old_cols = any(c in reading_cols for c in ["ph", "chlorine", "alkalinity", "hardness", "cya"])
+    # Old reading columns might still exist in the DB even though SQLAlchemy model
+    # doesn't reference them anymore. Check and migrate.
+    reading_cols = {c["name"] for c in inspector.get_columns("readings")}
+    still_have_old_cols = any(c in reading_cols for c in ["ph", "chlorine", "alkalinity", "hardness", "cya"])
 
-        if still_have_old_cols:
-            for col in ["ph", "chlorine", "alkalinity", "hardness", "cya"]:
-                if col in reading_cols:
+    if still_have_old_cols:
+        for col in ["ph", "chlorine", "alkalinity", "hardness", "cya"]:
+            if col in reading_cols:
+                existing_param = session.execute(text(f"SELECT id FROM parameters WHERE name = '{col}'")).fetchone()
+                if not existing_param:
                     session.execute(text(f"INSERT OR IGNORE INTO parameters (name, display_name, unit, default_value, sort_order) VALUES ('{col}', '{col}', '', 0.0, 0)"))
                     session.commit()
-                    param = session.execute(text(f"SELECT id FROM parameters WHERE name = '{col}'")).fetchone()
-                    if param:
-                        session.execute(text(f"""
-                            INSERT OR IGNORE INTO reading_values (reading_id, parameter_id, value)
-                            SELECT id, {param[0]}, {col} FROM readings WHERE {col} IS NOT NULL
-                        """))
-                    try:
-                        session.execute(text(f"ALTER TABLE readings DROP COLUMN {col}"))
-                    except Exception:
-                        pass
+                    existing_param = session.execute(text(f"SELECT id FROM parameters WHERE name = '{col}'")).fetchone()
+                if existing_param:
+                    session.execute(text(f"""
+                        INSERT OR IGNORE INTO reading_values (reading_id, parameter_id, value)
+                        SELECT id, {existing_param[0]}, {col} FROM readings WHERE {col} IS NOT NULL
+                    """))
+                try:
+                    session.execute(text(f"ALTER TABLE readings DROP COLUMN {col}"))
+                except Exception:
+                    pass
 
-        # Old instrument columns migration
-        inst_cols = {c["name"] for c in inspector.get_columns("instruments")}
-        still_have_old_bools = any(c.startswith("can_measure_") for c in inst_cols)
+    # Old instrument columns migration
+    inst_cols = {c["name"] for c in inspector.get_columns("instruments")}
+    still_have_old_bools = any(c.startswith("can_measure_") for c in inst_cols)
 
-        if still_have_old_bools:
-            for col in inst_cols:
-                if col.startswith("can_measure_"):
-                    param_name = col.replace("can_measure_", "")
+    if still_have_old_bools:
+        for col in inst_cols:
+            if col.startswith("can_measure_"):
+                param_name = col.replace("can_measure_", "")
+                existing_param = session.execute(text(f"SELECT id FROM parameters WHERE name = '{param_name}'")).fetchone()
+                if not existing_param:
+                    session.execute(text(f"INSERT OR IGNORE INTO parameters (name, display_name, unit, default_value, sort_order) VALUES ('{param_name}', '{param_name}', '', 0.0, 0)"))
+                    session.commit()
                     existing_param = session.execute(text(f"SELECT id FROM parameters WHERE name = '{param_name}'")).fetchone()
-                    if not existing_param:
-                        session.execute(text(f"INSERT OR IGNORE INTO parameters (name, display_name, unit, default_value, sort_order) VALUES ('{param_name}', '{param_name}', '', 0.0, 0)"))
-                        session.commit()
-                        existing_param = session.execute(text(f"SELECT id FROM parameters WHERE name = '{param_name}'")).fetchone()
-                    if existing_param:
-                        session.execute(text(f"""
-                            INSERT OR IGNORE INTO instrument_capabilities (instrument_id, parameter_id)
-                            SELECT id, {existing_param[0]} FROM instruments WHERE {col} = 1
-                        """))
-                    try:
-                        session.execute(text(f"ALTER TABLE instruments DROP COLUMN {col}"))
-                    except Exception:
-                        pass
+                if existing_param:
+                    session.execute(text(f"""
+                        INSERT OR IGNORE INTO instrument_capabilities (instrument_id, parameter_id)
+                        SELECT id, {existing_param[0]} FROM instruments WHERE {col} = 1
+                    """))
+                try:
+                    session.execute(text(f"ALTER TABLE instruments DROP COLUMN {col}"))
+                except Exception:
+                    pass
 
     session.commit()
 

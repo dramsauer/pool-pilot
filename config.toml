@@ -15,30 +15,30 @@ hardness_max = 250
 temperature_default = 35
 
 [parameters]
-  [parameters.ph]
-  display_name = "pH-Wert"
-  unit = ""
-  default_value = 7.4
-  sort_order = 10
   [parameters.chlorine]
   display_name = "Freies Chlor"
   unit = "mg/L"
   default_value = 1.5
+  sort_order = 10
+  [parameters.ph]
+  display_name = "pH-Wert"
+  unit = ""
+  default_value = 7.4
   sort_order = 20
   [parameters.alkalinity]
   display_name = "Gesamtalkalinität"
   unit = "mg/L CaCO₃"
   default_value = 100
   sort_order = 30
-  [parameters.hardness]
-  display_name = "Gesamthärte"
-  unit = "mg/L CaCO₃"
-  default_value = 200
-  sort_order = 40
   [parameters.cya]
   display_name = "Cyanursäure"
   unit = "mg/L"
   default_value = 0
+  sort_order = 40
+  [parameters.hardness]
+  display_name = "Gesamthärte"
+  unit = "mg/L CaCO₃"
+  default_value = 200
   sort_order = 50
   [parameters.bromine]
   display_name = "Brom"
