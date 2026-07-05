@@ -392,8 +392,8 @@ if st.session_state.last_dosing:
 
 st.divider()
 
-if st.session_state.show_results:
-    st.subheader("2\uFE0F\u20E3 Schlussfolgerungen")
+st.markdown("### 2\uFE0F\u20E3 Schlussfolgerungen")
+with st.expander("\u2139\uFE0F Details", expanded=st.session_state.show_results):
     tab_dosis, tab_hygiene, tab_kalk = st.tabs(["\U0001f48a Dosierempfehlung", "\U0001f9fc Hygiene", "\u2696\uFE0F Kalk-Korrosion"])
 
     with tab_dosis:
