@@ -11,6 +11,7 @@ from database.repository import (
     get_pool,
     get_instruments,
     get_instrument,
+    get_parameters, get_instrument_capabilities,
     get_products,
     save_reading_for_pool,
     save_task,
@@ -127,16 +128,7 @@ pool = get_pool(session, selected_pool_id)
 
 products = get_products(session)
 
-tw_defaults = {"alkalinity": 100, "hardness": 200}
-if pool.trinkwasser_id:
-    from database.repository import get_trinkwasser
 
-    tw = get_trinkwasser(session, pool.trinkwasser_id)
-    if tw:
-        tw_defaults = {
-            "alkalinity": tw.alkalinity_default,
-            "hardness": tw.calcium_hardness_default,
-        }
 
 st.title("\U0001f3ca PoolPilot")
 st.caption(f"{pool.name} · {pool.volume_liter} Liter · {pool.pool_type} — Weil planschen im grünen Wasser keinen Spaß macht")
@@ -154,17 +146,8 @@ col_title, col_inst = st.columns([1, 1])
 with col_title:
     st.markdown("### 1\uFE0F\u20E3 Messwerte erfassen")
 
-help_texts = {
-    "ph": "pH-Wert (Teststreifen 6,8–8,2). Ziel: 7,2–7,6. Beeinflusst Chlorwirkung und Wasserbalance.",
-    "chlorine": "Freies Chlor in mg/L (Teststreifen 0,0–5,0). Ziel: 0,5–3,0 mg/L.",
-    "temp": "Wassertemperatur in °C (separate Messung, z. B. Thermometer). Beeinflusst CSI/LSI/RSI direkt.",
-    "alk": "Gesamtalkalinität (Teststreifen 0–240 mg/L CaCO₃). Pufferkapazität gegen pH-Schwankungen. Trinkwasser-Default: {} mg/L".format(tw_defaults["alkalinity"]),
-    "hard": "Gesamthärte (Teststreifen 0–1000 mg/L CaCO₃). Wird als Calciumhärte für CSI/LSI genutzt. Trinkwasser-Default: {} mg/L".format(tw_defaults["hardness"]),
-    "cya": "Cyanursäure / Stabilisator (Teststreifen 0–150 mg/L). Schützt Chlor vor UV-Abbau. Verfälscht Alkalinitätsmessung.",
-    "salt": "Salzgehalt / TDS (Teststreifen 0–8000 mg/L NaCl). Relevant für CSI-Berechnung. Salzpool: ~3000–4000 mg/L.",
-}
-
-default_tds = 3000 if pool.pool_type == "salt" else 500
+all_params = get_parameters(session)
+help_texts = {p.name: f"{p.display_name} ({p.unit})" for p in all_params}
 
 with col_inst:
     all_instruments = get_instruments(session)
@@ -185,71 +168,43 @@ with col_inst:
 instrument = get_instrument(session, selected_inst_id) if selected_inst_id else None
 instrument_name = instrument.name if instrument else "Teststreifen (alle Parameter)"
 
-cap = {
-    "ph": True,
-    "chlorine": True,
-    "alkalinity": True,
-    "hardness": True,
-    "cya": True,
-    "salt": True,
-}
 if instrument:
-    cap = {
-        "ph": instrument.can_measure_ph,
-        "chlorine": instrument.can_measure_chlorine or instrument.can_measure_bromine,
-        "alkalinity": instrument.can_measure_alkalinity,
-        "hardness": instrument.can_measure_hardness,
-        "cya": instrument.can_measure_cya,
-        "salt": instrument.can_measure_salt,
-    }
+    cap_params = get_instrument_capabilities(session, selected_inst_id)
+else:
+    cap_params = all_params
 
-def_val = {
-    "ph": 7.4,
-    "chlorine": 1.5,
-    "alkalinity": tw_defaults["alkalinity"],
-    "hardness": tw_defaults["hardness"],
-    "cya": 0,
-    "salt": default_tds,
+def_val = {p.name: p.default_value for p in all_params}
+if pool.trinkwasser_id:
+    from database.repository import get_trinkwasser
+
+    tw = get_trinkwasser(session, pool.trinkwasser_id)
+    if tw:
+        def_val["alkalinity"] = tw.alkalinity_default
+        def_val["hardness"] = tw.calcium_hardness_default
+
+_PARAM_RANGES = {
+    "ph": (6.8, 8.2, 0.1),
+    "chlorine": (0.0, 5.0, 0.1),
+    "alkalinity": (0, 240, 5),
+    "hardness": (0, 1000, 10),
+    "cya": (0, 150, 5),
+    "salt": (0, 8000, 100),
+    "bromine": (0.0, 10.0, 0.1),
+    "oxygen": (0.0, 10.0, 0.1),
 }
 
 st.markdown(f"#### \U0001f9ea {instrument_name}")
+user_values = {}
 col1, col2 = st.columns(2)
-with col1:
-    if cap["ph"]:
-        ph = st.slider("pH-Wert", 6.8, 8.2, 7.4, 0.1, help=help_texts["ph"])
-    else:
-        ph = def_val["ph"]
-        st.metric("pH-Wert (aus Trinkwasser)", f"{ph:.1f}")
-
-    if cap["chlorine"]:
-        chlorine = st.slider("Freies Chlor (mg/L)", 0.0, 5.0, 1.5, 0.1, help=help_texts["chlorine"])
-    else:
-        chlorine = def_val["chlorine"]
-        st.metric("Freies Chlor (aus Trinkwasser)", f"{chlorine:.1f} mg/L")
-
-    if cap["alkalinity"]:
-        alkalinity = st.slider("Gesamtalkalinität (mg/L CaCO₃)", 0, 240, int(def_val["alkalinity"]), 5, help=help_texts["alk"])
-    else:
-        alkalinity = int(def_val["alkalinity"])
-        st.metric("Gesamtalkalinität (aus Trinkwasser)", f"{alkalinity} mg/L")
-with col2:
-    if cap["hardness"]:
-        hardness = st.slider("Gesamthärte (mg/L CaCO₃)", 0, 1000, int(def_val["hardness"]), 10, help=help_texts["hard"])
-    else:
-        hardness = int(def_val["hardness"])
-        st.metric("Gesamthärte (aus Trinkwasser)", f"{hardness} mg/L")
-
-    if cap["cya"]:
-        cya = st.slider("Cyanursäure / CYA (mg/L)", 0, 150, 0, 5, help=help_texts["cya"])
-    else:
-        cya = 0
-        st.metric("Cyanursäure / CYA (aus Trinkwasser)", f"{cya} mg/L")
-
-    if cap["salt"]:
-        tds = st.slider("Salzgehalt / TDS (mg/L NaCl)", 0, 8000, default_tds, 100, help=help_texts["salt"])
-    else:
-        tds = default_tds
-        st.metric("Salzgehalt / TDS (aus Trinkwasser)", f"{tds} mg/L NaCl")
+for i, param in enumerate(cap_params):
+    col = col1 if i % 2 == 0 else col2
+    default = def_val.get(param.name, param.default_value)
+    rng = _PARAM_RANGES.get(param.name, (0.0, 500.0, 1.0))
+    with col:
+        user_values[param.name] = st.slider(
+            param.display_name, rng[0], rng[1], float(default), rng[2],
+            help=help_texts.get(param.name, ""),
+        )
 
 st.markdown("#### \U0001f321\uFE0F Separate Messung")
 col_temp, col_water = st.columns(2)
@@ -337,24 +292,22 @@ elif uploaded_file:
     img.save(photo_path)
     st.image(photo_data, caption="Hochgeladenes Foto", width=300)
 
-lsi = calculate_lsi(ph, temperature, hardness, alkalinity, cya=cya, tds=tds)
-rsi = calculate_rsi(ph, temperature, hardness, alkalinity)
-csi = calculate_csi(ph, temperature, hardness, alkalinity, cya=cya, tds=tds)
-ccpp = calculate_ccpp(ph, temperature, hardness, alkalinity, cya=cya, tds=tds)
+lsi = calculate_lsi(user_values.get("ph", 7.4), temperature,
+                     user_values.get("hardness", 200), user_values.get("alkalinity", 100),
+                     cya=user_values.get("cya", 0), tds=user_values.get("salt", 500))
+rsi = calculate_rsi(user_values.get("ph", 7.4), temperature,
+                     user_values.get("hardness", 200), user_values.get("alkalinity", 100))
+csi = calculate_csi(user_values.get("ph", 7.4), temperature,
+                     user_values.get("hardness", 200), user_values.get("alkalinity", 100),
+                     cya=user_values.get("cya", 0), tds=user_values.get("salt", 500))
+ccpp = calculate_ccpp(user_values.get("ph", 7.4), temperature,
+                       user_values.get("hardness", 200), user_values.get("alkalinity", 100),
+                       cya=user_values.get("cya", 0), tds=user_values.get("salt", 500))
 lsi_cat = categorize_lsi(lsi)
 rsi_cat = categorize_rsi(rsi)
 csi_cat = categorize_csi(csi)
 
-test = WaterTest(
-    values={
-        "ph": ph,
-        "chlorine": chlorine,
-        "alkalinity": alkalinity,
-        "hardness": hardness,
-        "cya": cya,
-    },
-    temperature_c=temperature,
-)
+test = WaterTest(values=user_values, temperature_c=temperature)
 dosing = recommend_dosing_from_db(test, pool, products)
 
 if st.button("\U0001f4be Messung speichern", type="primary", use_container_width=True):
@@ -375,11 +328,7 @@ if st.button("\U0001f4be Messung speichern", type="primary", use_container_width
     reading = save_reading_for_pool(
         session,
         pool_id=selected_pool_id,
-        ph=ph,
-        chlorine=chlorine,
-        alkalinity=alkalinity,
-        hardness=hardness,
-        cya=cya,
+        values=user_values,
         temperature_c=temperature,
         lsi=lsi,
         rsi=rsi,
@@ -450,10 +399,16 @@ if st.session_state.show_results:
     tab_dosis, tab_hygiene, tab_kalk = st.tabs(["\U0001f48a Dosierempfehlung", "\U0001f9fc Hygiene", "\u2696\uFE0F Kalk-Korrosion"])
 
     with tab_dosis:
-        ph_ok = pool.ph_min <= ph <= pool.ph_max
-        chl_ok = pool.chlorine_min <= chlorine <= pool.chlorine_max
-        alk_ok = pool.alkalinity_min <= alkalinity <= pool.alkalinity_max
-        hard_ok = pool.hardness_min <= hardness <= pool.hardness_max
+        _ph = user_values.get("ph", 7.4)
+        _chlorine = user_values.get("chlorine", 0)
+        _alkalinity = user_values.get("alkalinity", 100)
+        _hardness = user_values.get("hardness", 200)
+        _cya = user_values.get("cya", 0)
+        _tds = user_values.get("salt", 500)
+        ph_ok = pool.ph_min <= _ph <= pool.ph_max
+        chl_ok = pool.chlorine_min <= _chlorine <= pool.chlorine_max
+        alk_ok = pool.alkalinity_min <= _alkalinity <= pool.alkalinity_max
+        hard_ok = pool.hardness_min <= _hardness <= pool.hardness_max
         consensus_score = 0.6 * _cat_score(csi_cat) + 0.2 * _cat_score(lsi_cat) + 0.2 * _cat_score(rsi_cat)
         has_kalk_issue = consensus_score < -0.3 or consensus_score > 0.3
         all_ok = ph_ok and chl_ok and alk_ok and hard_ok and not has_kalk_issue
@@ -515,15 +470,15 @@ if st.session_state.show_results:
     with tab_hygiene:
         col_ph_gauge, col_chlor_gauge = st.columns(2)
         with col_ph_gauge:
-            ph_fig = _target_gauge(ph, "pH", [6.2, 8.4], [pool.ph_min, pool.ph_max])
+            ph_fig = _target_gauge(_ph, "pH", [6.2, 8.4], [pool.ph_min, pool.ph_max])
             st.plotly_chart(ph_fig, use_container_width=True)
-            ph_ok = pool.ph_min <= ph <= pool.ph_max
-            st.metric("pH", f"{ph:.1f}", delta="\u2705 i.O." if ph_ok else f"\u26a0\uFE0F Ziel {pool.ph_min}–{pool.ph_max}")
+            ph_ok = pool.ph_min <= _ph <= pool.ph_max
+            st.metric("pH", f"{_ph:.1f}", delta="\u2705 i.O." if ph_ok else f"\u26a0\uFE0F Ziel {pool.ph_min}–{pool.ph_max}")
         with col_chlor_gauge:
-            chl_fig = _target_gauge(chlorine, "Chlor", [0.0, 10.0], [pool.chlorine_min, pool.chlorine_max], unit="mg/L")
+            chl_fig = _target_gauge(_chlorine, "Chlor", [0.0, 10.0], [pool.chlorine_min, pool.chlorine_max], unit="mg/L")
             st.plotly_chart(chl_fig, use_container_width=True)
-            chl_ok = pool.chlorine_min <= chlorine <= pool.chlorine_max
-            st.metric("Chlor", f"{chlorine:.1f} mg/L", delta="\u2705 i.O." if chl_ok else f"\u26a0\uFE0F Ziel {pool.chlorine_min}–{pool.chlorine_max} mg/L")
+            chl_ok = pool.chlorine_min <= _chlorine <= pool.chlorine_max
+            st.metric("Chlor", f"{_chlorine:.1f} mg/L", delta="\u2705 i.O." if chl_ok else f"\u26a0\uFE0F Ziel {pool.chlorine_min}–{pool.chlorine_max} mg/L")
 
     with tab_kalk:
         csi_score = _cat_score(csi_cat)
@@ -571,7 +526,7 @@ if st.session_state.show_results:
             if "ausgeglichen" not in unique:
                 notes.append("Kein Index zeigt ausgeglichenes Wasser")
             if csi_cat != lsi_cat.replace("kalkausfällend", "kalkend"):
-                if cya > 0 or tds > 500:
+                if _cya > 0 or _tds > 500:
                     notes.append("CSI korrigiert LSI um CYA/TDS-Effekte")
             if rsi_cat == "ausgeglichen" and cons_verdict != "ausgeglichen":
                 notes.append("RSI toleranter — optimiert für Metallschutz")
@@ -625,8 +580,8 @@ if st.session_state.show_results:
             st.markdown(f"""
         **CSI (Calcium Sättigungs-Index)** – Wojtowicz 2001 (Modernster Standard)
         Bereich: **-0,3 bis +0,3** (ausgeglichen).
-        Korrigiert die Alkalinität um Cyanursäure (CYA) {f'({cya} mg/L)' if cya > 0 else ''}
-        und berücksichtigt TDS/Salzgehalt {f'({tds} mg/L)' if tds > 500 else ''}.
+        Korrigiert die Alkalinität um Cyanursäure (CYA) {f'({_cya} mg/L)' if _cya > 0 else ''}
+        und berücksichtigt TDS/Salzgehalt {f'({_tds} mg/L)' if _tds > 500 else ''}.
         *CSI ist der primäre Index für die Wasserbalance (Gewichtung 60%).*
 
         **LSI (Langelier Sättigungs-Index)** – PHTA-Klassiker
