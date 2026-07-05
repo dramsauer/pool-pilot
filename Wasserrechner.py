@@ -346,11 +346,13 @@ rsi_cat = categorize_rsi(rsi)
 csi_cat = categorize_csi(csi)
 
 test = WaterTest(
-    ph=ph,
-    chlorine=chlorine,
-    alkalinity=alkalinity,
-    hardness=hardness,
-    cya=cya,
+    values={
+        "ph": ph,
+        "chlorine": chlorine,
+        "alkalinity": alkalinity,
+        "hardness": hardness,
+        "cya": cya,
+    },
     temperature_c=temperature,
 )
 dosing = recommend_dosing_from_db(test, pool, products)

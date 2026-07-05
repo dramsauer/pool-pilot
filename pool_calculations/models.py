@@ -5,13 +5,32 @@ from dataclasses import dataclass, field
 
 @dataclass
 class WaterTest:
-    ph: float
-    chlorine: float
-    alkalinity: float
-    hardness: float
-    temperature_c: float
-    cya: float = 0
+    values: dict[str, float] = field(default_factory=dict)
+    temperature_c: float = 25
     notes: str = ""
+
+    @property
+    def ph(self) -> float:
+        return self.values.get("ph", 0.0)
+
+    @property
+    def chlorine(self) -> float:
+        return self.values.get("chlorine", 0.0)
+
+    @property
+    def alkalinity(self) -> float:
+        return self.values.get("alkalinity", 0.0)
+
+    @property
+    def hardness(self) -> float:
+        return self.values.get("hardness", 0.0)
+
+    @property
+    def cya(self) -> float:
+        return self.values.get("cya", 0.0)
+
+    def get(self, name: str, default: float = 0.0) -> float:
+        return self.values.get(name, default)
 
 
 @dataclass
