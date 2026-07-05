@@ -218,9 +218,15 @@ def migrate_from_config(session: Session):
     with open(config_path, "rb") as f:
         data = tomllib.load(f)
 
-    # Seed parameters from config (if table empty)
-    if session.query(Parameter).count() == 0:
-        for key, pdata in data.get("parameters", {}).items():
+    # Sync parameters from config
+    for key, pdata in data.get("parameters", {}).items():
+        existing = session.query(Parameter).filter(Parameter.name == key).first()
+        if existing:
+            existing.display_name = pdata.get("display_name", key)
+            existing.unit = pdata.get("unit", "")
+            existing.default_value = pdata.get("default_value", 0.0)
+            existing.sort_order = pdata.get("sort_order", 0)
+        else:
             session.add(Parameter(
                 name=key,
                 display_name=pdata.get("display_name", key),
@@ -228,11 +234,15 @@ def migrate_from_config(session: Session):
                 default_value=pdata.get("default_value", 0.0),
                 sort_order=pdata.get("sort_order", 0),
             ))
-        session.commit()
+    session.commit()
 
-    # Seed instruments from config (if table empty)
-    if session.query(Instrument).count() == 0:
-        for key, inst in data.get("instruments", {}).items():
+    # Sync instruments from config
+    for key, inst in data.get("instruments", {}).items():
+        instrument = session.query(Instrument).filter(Instrument.name == inst["name"]).first()
+        if instrument:
+            instrument.brand = inst.get("brand", "")
+            instrument.notes = inst.get("notes", "")
+        else:
             instrument = Instrument(
                 name=inst["name"],
                 brand=inst.get("brand", ""),
@@ -240,14 +250,19 @@ def migrate_from_config(session: Session):
             )
             session.add(instrument)
             session.flush()
-            for cap_name in inst.get("capabilities", []):
-                param = session.query(Parameter).filter(Parameter.name == cap_name).first()
-                if param:
-                    session.add(InstrumentCapability(
-                        instrument_id=instrument.id,
-                        parameter_id=param.id,
-                    ))
-        session.commit()
+        session.flush()
+        # Resync capabilities
+        session.query(InstrumentCapability).filter(
+            InstrumentCapability.instrument_id == instrument.id
+        ).delete()
+        for cap_name in inst.get("capabilities", []):
+            param = session.query(Parameter).filter(Parameter.name == cap_name).first()
+            if param:
+                session.add(InstrumentCapability(
+                    instrument_id=instrument.id,
+                    parameter_id=param.id,
+                ))
+    session.commit()
 
     # Seed trinkwasser from config (if table empty)
     if session.query(Trinkwasser).count() == 0:
