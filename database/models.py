@@ -23,14 +23,6 @@ class Instrument(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(200), nullable=False)
     brand = Column(String(200))
-    can_measure_ph = Column(Boolean, default=False)
-    can_measure_chlorine = Column(Boolean, default=False)
-    can_measure_bromine = Column(Boolean, default=False)
-    can_measure_alkalinity = Column(Boolean, default=False)
-    can_measure_hardness = Column(Boolean, default=False)
-    can_measure_cya = Column(Boolean, default=False)
-    can_measure_salt = Column(Boolean, default=False)
-    can_measure_oxygen = Column(Boolean, default=False)
     notes = Column(Text)
 
 
@@ -108,16 +100,36 @@ class Product(Base):
     notes = Column(Text)
 
 
+class Parameter(Base):
+    __tablename__ = "parameters"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), unique=True, nullable=False)
+    display_name = Column(String(100), nullable=False)
+    unit = Column(String(30), default="")
+    default_value = Column(Float, default=0.0)
+    sort_order = Column(Integer, default=0)
+
+
+class ReadingValue(Base):
+    __tablename__ = "reading_values"
+    id = Column(Integer, primary_key=True)
+    reading_id = Column(Integer, ForeignKey("readings.id"), nullable=False)
+    parameter_id = Column(Integer, ForeignKey("parameters.id"), nullable=False)
+    value = Column(Float, nullable=False)
+
+
+class InstrumentCapability(Base):
+    __tablename__ = "instrument_capabilities"
+    id = Column(Integer, primary_key=True)
+    instrument_id = Column(Integer, ForeignKey("instruments.id"), nullable=False)
+    parameter_id = Column(Integer, ForeignKey("parameters.id"), nullable=False)
+
+
 class Reading(Base):
     __tablename__ = "readings"
     id = Column(Integer, primary_key=True)
     pool_id = Column(Integer, ForeignKey("pools.id"), nullable=True)
     timestamp = Column(DateTime, default=datetime.datetime.now)
-    ph = Column(Float, nullable=False)
-    chlorine = Column(Float, nullable=False)
-    alkalinity = Column(Float, nullable=False)
-    hardness = Column(Float, nullable=False)
-    cya = Column(Float, default=0)
     temperature_c = Column(Float, nullable=False)
     lsi_value = Column(Float)
     rsi_value = Column(Float)
