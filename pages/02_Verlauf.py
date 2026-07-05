@@ -35,15 +35,16 @@ if not readings:
     st.info("Noch keine Messwerte vorhanden.")
     st.stop()
 
+all_param_names = sorted(set(
+    k for r in readings for k in getattr(r, '_values', {}).keys()
+))
+
 df = pd.DataFrame(
     [
         {
             "Datum": r.timestamp,
-            "pH": r.ph,
-            "Chlor": r.chlorine,
-            "Alkalinität": r.alkalinity,
-            "Härte": r.hardness,
-            "CYA": r.cya,
+            **{n: r._values.get(n) for n in all_param_names},
+            "Temperatur": r.temperature_c,
             "LSI": r.lsi_value,
             "RSI": r.rsi_value,
             "CSI": r.csi_value if r.csi_value is not None else None,
@@ -53,75 +54,35 @@ df = pd.DataFrame(
     ]
 )
 
-has_csi = df["CSI"].notna().any()
-has_ccpp = df["CCPP"].notna().any()
+param_names = [n for n in all_param_names if n not in ("lsi_value", "rsi_value", "csi_value")]
+n_param_rows = len(param_names)
+n_index_rows = 1
+n_rows = n_param_rows + n_index_rows
 
-if has_csi:
-    fig = make_subplots(
-        rows=4,
-        cols=1,
-        subplot_titles=[
-            "pH & Chlor",
-            "Alkalinität & Calciumhärte",
-            "CYA",
-            "CSI, LSI & RSI",
-        ],
-        row_heights=[0.25, 0.25, 0.25, 0.25],
-    )
-else:
-    fig = make_subplots(
-        rows=4,
-        cols=1,
-        subplot_titles=["pH & Chlor", "Alkalinität & Calciumhärte", "CYA", "LSI & RSI"],
-        row_heights=[0.25, 0.25, 0.25, 0.25],
-    )
+subplot_titles = param_names + ["Indexwerte (LSI, RSI, CSI)"]
+row_heights = [1.0 / n_rows] * n_rows
 
-fig.add_trace(
-    go.Scatter(x=df["Datum"], y=df["pH"], name="pH", mode="lines+markers"), row=1, col=1
-)
-fig.add_trace(
-    go.Scatter(x=df["Datum"], y=df["Chlor"], name="Chlor", mode="lines+markers"),
-    row=1,
-    col=1,
-)
-fig.add_trace(
-    go.Scatter(
-        x=df["Datum"], y=df["Alkalinität"], name="Alkalinität", mode="lines+markers"
-    ),
-    row=2,
-    col=1,
-)
-fig.add_trace(
-    go.Scatter(x=df["Datum"], y=df["Härte"], name="Härte", mode="lines+markers"),
-    row=2,
-    col=1,
-)
-fig.add_trace(
-    go.Scatter(x=df["Datum"], y=df["CYA"], name="CYA", mode="lines+markers"),
-    row=3,
-    col=1,
-)
-fig.add_trace(
-    go.Scatter(x=df["Datum"], y=df["LSI"], name="LSI", mode="lines+markers"),
-    row=4,
-    col=1,
-)
-fig.add_trace(
-    go.Scatter(x=df["Datum"], y=df["RSI"], name="RSI", mode="lines+markers"),
-    row=4,
-    col=1,
-)
-if has_csi:
+fig = make_subplots(rows=n_rows, cols=1, subplot_titles=subplot_titles, row_heights=row_heights)
+
+for row_idx, name in enumerate(param_names, 1):
+    if name in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df["Datum"], y=df[name], name=name, mode="lines+markers"),
+            row=row_idx, col=1,
+        )
+
+index_row = n_rows
+for idx_name in ["LSI", "RSI"]:
+    if idx_name in df.columns and df[idx_name].notna().any():
+        fig.add_trace(
+            go.Scatter(x=df["Datum"], y=df[idx_name], name=idx_name, mode="lines+markers"),
+            row=index_row, col=1,
+        )
+if "CSI" in df.columns and df["CSI"].notna().any():
     fig.add_trace(
-        go.Scatter(
-            x=df["Datum"],
-            y=df["CSI"],
-            name="CSI",
-            mode="lines+markers",
-            line=dict(dash="dot", width=3),
-        ),
-        row=4,
-        col=1,
+        go.Scatter(x=df["Datum"], y=df["CSI"], name="CSI", mode="lines+markers",
+                   line=dict(dash="dot", width=3)),
+        row=index_row, col=1,
     )
 
 fig.update_layout(height=800, hovermode="x unified")
